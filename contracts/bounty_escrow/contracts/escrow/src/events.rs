@@ -1,3 +1,5 @@
+extern crate grainlify_core;
+use grainlify_core::asset;
 use crate::CapabilityAction;
 use soroban_sdk::{contracttype, symbol_short, Address, Env};
 
@@ -8,7 +10,7 @@ pub const EVENT_VERSION_V2: u32 = 2;
 pub struct BountyEscrowInitialized {
     pub version: u32,
     pub admin: Address,
-    pub token: Address,
+    pub token: asset::AssetId,
     pub timestamp: u64,
 }
 

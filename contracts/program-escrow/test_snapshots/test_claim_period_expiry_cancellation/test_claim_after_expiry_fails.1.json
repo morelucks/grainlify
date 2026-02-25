@@ -1598,7 +1598,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'ClaimExpired' from contract function 'Symbol(obj#437)'"
+                  "string": "caught panic 'ClaimExpired' from contract function 'Symbol(obj#439)'"
                 },
                 {
                   "string": "TestProgram2024"

@@ -1143,7 +1143,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Insufficient balance' from contract function 'Symbol(obj#299)'"
+                  "string": "caught panic 'Insufficient balance' from contract function 'Symbol(obj#301)'"
                 },
                 {
                   "vec": [

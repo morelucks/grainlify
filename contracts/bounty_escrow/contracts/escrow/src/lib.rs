@@ -805,7 +805,7 @@ impl BountyEscrowContract {
             return Err(Error::NotPaused);
         }
 
-        let token_address: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_address: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let token_client = token::TokenClient::new(&env, &token_address);
 
         let contract_address = env.current_contract_address();
@@ -1334,7 +1334,7 @@ impl BountyEscrowContract {
             }
         }
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
 
         // Transfer funds from depositor to contract
@@ -1428,7 +1428,7 @@ impl BountyEscrowContract {
             return Err(Error::FundsNotLocked);
         }
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
 
         // Transfer funds to contributor
@@ -1503,7 +1503,7 @@ impl BountyEscrowContract {
             payout_amount,
         )?;
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
         client.transfer(
             &env.current_contract_address(),
@@ -1632,7 +1632,7 @@ impl BountyEscrowContract {
             return Err(Error::FundsNotLocked);
         }
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
         client.transfer(
             &env.current_contract_address(),
@@ -1710,7 +1710,7 @@ impl BountyEscrowContract {
             claim.amount,
         )?;
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
         client.transfer(
             &env.current_contract_address(),
@@ -1890,7 +1890,7 @@ impl BountyEscrowContract {
             return Err(Error::InsufficientFunds);
         }
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
 
         // Transfer only the requested partial amount to the contributor
@@ -1987,7 +1987,7 @@ impl BountyEscrowContract {
             return Err(Error::InvalidAmount);
         }
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
 
         // Transfer the calculated refund amount to the designated recipient
@@ -2094,7 +2094,7 @@ impl BountyEscrowContract {
             amount,
         )?;
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
         let now = env.ledger().timestamp();
         let refund_to = escrow.depositor.clone();
@@ -2154,7 +2154,7 @@ impl BountyEscrowContract {
         if !env.storage().instance().has(&DataKey::Token) {
             return Err(Error::NotInitialized);
         }
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
         Ok(client.balance(&env.current_contract_address()))
     }
@@ -2626,7 +2626,7 @@ impl BountyEscrowContract {
             return Err(Error::NotInitialized);
         }
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
         let contract_address = env.current_contract_address();
         let timestamp = env.ledger().timestamp();
@@ -2762,7 +2762,7 @@ impl BountyEscrowContract {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
-        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_addr: asset::AssetId = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
         let contract_address = env.current_contract_address();
         let timestamp = env.ledger().timestamp();

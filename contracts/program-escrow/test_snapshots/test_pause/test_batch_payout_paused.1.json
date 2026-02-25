@@ -990,7 +990,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Funds Paused' from contract function 'Symbol(obj#247)'"
+                  "string": "caught panic 'Funds Paused' from contract function 'Symbol(obj#249)'"
                 },
                 {
                   "vec": [
