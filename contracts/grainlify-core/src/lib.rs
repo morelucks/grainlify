@@ -169,7 +169,7 @@ pub use governance::{
 // ==================== MONITORING MODULE ====================
 mod monitoring {
     use super::DataKey;
-    use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
+    use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol, Vec};
 
     // Storage keys
     const OPERATION_COUNT: &str = "op_count";
@@ -225,7 +225,11 @@ mod monitoring {
         pub total_errors: u64,
     }
 
-    // Data: Performance stats
+    /// Aggregated performance statistics for a tracked contract function.
+    ///
+    /// Counters are maintained in persistent storage by [`emit_performance`] and
+    /// read back by [`get_performance_stats`].  The storage footprint is bounded
+    /// by [`MAX_TRACKED_FUNCTIONS`] — see the eviction policy below.
     #[contracttype]
     #[derive(Clone, Debug)]
     pub struct PerformanceStats {
@@ -275,10 +279,72 @@ mod monitoring {
         );
     }
 
-    // Track performance
+    /// Maximum number of distinct function names whose performance counters
+    /// are retained in persistent storage.  When a new (previously unseen)
+    /// function is tracked and the index already contains this many entries,
+    /// the **oldest** entry (first element of the `perf_index` vector) is
+    /// evicted — its three storage keys (`perf_cnt`, `perf_time`, `perf_last`)
+    /// are removed before the new entry is appended.
+    ///
+    /// This caps total storage at `MAX_TRACKED_FUNCTIONS * 3 + 1` persistent
+    /// entries (counters + the index itself), preventing unbounded growth.
+    pub const MAX_TRACKED_FUNCTIONS: u32 = 50;
+
+    /// Records a single invocation of `function` with the given `duration`.
+    ///
+    /// Increments `perf_cnt`, accumulates `perf_time`, and writes
+    /// `perf_last` (ledger timestamp) so that [`get_performance_stats`] can
+    /// reconstruct the full [`PerformanceStats`] for any tracked function.
+    ///
+    /// **Note on timestamp granularity:** Within a single ledger close,
+    /// `env.ledger().timestamp()` does not advance, so `duration` may be
+    /// zero when both start and end are sampled in the same ledger.
     pub fn emit_performance(env: &Env, function: Symbol, duration: u64) {
+        // --- eviction bookkeeping -------------------------------------------
+        let index_key = Symbol::new(env, "perf_index");
+        let mut index: Vec<Symbol> = env
+            .storage()
+            .persistent()
+            .get(&index_key)
+            .unwrap_or(Vec::new(env));
+
+        // Check whether `function` is already tracked.
+        let mut already_tracked = false;
+        for i in 0..index.len() {
+            if index.get(i).unwrap() == function {
+                already_tracked = true;
+                break;
+            }
+        }
+
+        if !already_tracked {
+            // Evict the oldest entry when the cap is reached.
+            if index.len() >= MAX_TRACKED_FUNCTIONS {
+                let oldest = index.get(0).unwrap();
+                env.storage()
+                    .persistent()
+                    .remove(&(Symbol::new(env, "perf_cnt"), oldest.clone()));
+                env.storage()
+                    .persistent()
+                    .remove(&(Symbol::new(env, "perf_time"), oldest.clone()));
+                env.storage()
+                    .persistent()
+                    .remove(&(Symbol::new(env, "perf_last"), oldest.clone()));
+
+                let mut trimmed = Vec::new(env);
+                for i in 1..index.len() {
+                    trimmed.push_back(index.get(i).unwrap());
+                }
+                index = trimmed;
+            }
+            index.push_back(function.clone());
+            env.storage().persistent().set(&index_key, &index);
+        }
+
+        // --- update counters ------------------------------------------------
         let count_key = (Symbol::new(env, "perf_cnt"), function.clone());
         let time_key = (Symbol::new(env, "perf_time"), function.clone());
+        let last_key = (Symbol::new(env, "perf_last"), function.clone());
 
         let count: u64 = env.storage().persistent().get(&count_key).unwrap_or(0);
         let total: u64 = env.storage().persistent().get(&time_key).unwrap_or(0);
@@ -287,6 +353,9 @@ mod monitoring {
         env.storage()
             .persistent()
             .set(&time_key, &(total + duration));
+        env.storage()
+            .persistent()
+            .set(&last_key, &env.ledger().timestamp());
 
         env.events().publish(
             (symbol_short!("metric"), symbol_short!("perf")),
@@ -349,8 +418,10 @@ mod monitoring {
         }
     }
 
-    // Get performance stats (e.g. for off-chain analytics)
-    #[allow(dead_code)]
+    /// Returns aggregated [`PerformanceStats`] for `function_name`.
+    ///
+    /// All counters default to `0` when the function has never been tracked,
+    /// so this call is always safe (no panics, no zero-division).
     pub fn get_performance_stats(env: &Env, function_name: Symbol) -> PerformanceStats {
         let count_key = (Symbol::new(env, "perf_cnt"), function_name.clone());
         let time_key = (Symbol::new(env, "perf_time"), function_name.clone());
@@ -455,6 +526,8 @@ mod monitoring {
 
 #[cfg(test)]
 mod test_core_monitoring;
+#[cfg(test)]
+mod test_performance_stats;
 #[cfg(test)]
 mod test_serialization_compatibility;
 
@@ -1222,7 +1295,10 @@ impl GrainlifyContract {
         monitoring::get_state_snapshot(&env)
     }
 
-    /// Get performance stats for a function
+    /// Returns aggregated performance statistics for `function_name`.
+    ///
+    /// Counters default to zero when no data has been recorded, so this
+    /// endpoint is always safe to call for any symbol.
     pub fn get_performance_stats(env: Env, function_name: Symbol) -> monitoring::PerformanceStats {
         monitoring::get_performance_stats(&env, function_name)
     }
