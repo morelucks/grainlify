@@ -2,6 +2,7 @@
 #[allow(dead_code)]
 mod events;
 mod invariants;
+mod reentrancy_guard;
 #[cfg(test)]
 mod test_metadata;
 
@@ -18,6 +19,9 @@ mod traits;
 
 #[cfg(test)]
 mod test_maintenance_mode;
+
+#[cfg(test)]
+mod test_deterministic_error_ordering;
 
 use events::{
     emit_batch_funds_locked, emit_batch_funds_released, emit_bounty_initialized,
@@ -1734,42 +1738,50 @@ impl BountyEscrowContract {
         amount: i128,
         deadline: u64,
     ) -> Result<(), Error> {
-        // GUARD: acquire reentrancy lock
+        // Validation precedence (deterministic ordering):
+        // 1. Reentrancy guard
+        // 2. Contract initialized
+        // 3. Paused / deprecated (operational state)
+        // 4. Participant filter + rate limiting
+        // 5. Authorization
+        // 6. Input validation (amount policy)
+        // 7. Business logic (bounty uniqueness)
+
+        // 1. GUARD: acquire reentrancy lock
         reentrancy_guard::acquire(&env);
 
-        // Participant filtering (blocklist-only / allowlist-only / disabled)
-        Self::check_participant_filter(&env, depositor.clone())?;
-
-        soroban_sdk::log!(&env, "start lock_funds");
-        // Apply rate limiting
-        anti_abuse::check_rate_limit(&env, depositor.clone());
-        soroban_sdk::log!(&env, "rate limit ok");
-
-        if Self::check_paused(&env, symbol_short!("lock")) {
-            return Err(Error::FundsPaused);
-        }
-        if Self::get_deprecation_state(&env).deprecated {
-            return Err(Error::ContractDeprecated);
-        }
-        soroban_sdk::log!(&env, "check paused ok");
-
-        let _start = env.ledger().timestamp();
-        let _caller = depositor.clone();
-
-        // Verify depositor authorization
-        depositor.require_auth();
-        soroban_sdk::log!(&env, "auth ok");
-
+        // 2. Contract must be initialized before any other check
         if !env.storage().instance().has(&DataKey::Admin) {
+            reentrancy_guard::release(&env);
             return Err(Error::NotInitialized);
         }
         soroban_sdk::log!(&env, "admin ok");
 
-        if env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
-            return Err(Error::BountyExists);
+        // 3. Operational state: paused / deprecated
+        if Self::check_paused(&env, symbol_short!("lock")) {
+            reentrancy_guard::release(&env);
+            return Err(Error::FundsPaused);
         }
-        soroban_sdk::log!(&env, "bounty exists ok");
+        if Self::get_deprecation_state(&env).deprecated {
+            reentrancy_guard::release(&env);
+            return Err(Error::ContractDeprecated);
+        }
+        soroban_sdk::log!(&env, "check paused ok");
 
+        // 4. Participant filtering and rate limiting
+        Self::check_participant_filter(&env, depositor.clone())?;
+        soroban_sdk::log!(&env, "start lock_funds");
+        anti_abuse::check_rate_limit(&env, depositor.clone());
+        soroban_sdk::log!(&env, "rate limit ok");
+
+        let _start = env.ledger().timestamp();
+        let _caller = depositor.clone();
+
+        // 5. Authorization
+        depositor.require_auth();
+        soroban_sdk::log!(&env, "auth ok");
+
+        // 6. Input validation: amount policy
         // Enforce min/max amount policy if one has been configured (Issue #62).
         if let Some((min_amount, max_amount)) = env
             .storage()
@@ -1777,13 +1789,22 @@ impl BountyEscrowContract {
             .get::<DataKey, (i128, i128)>(&DataKey::AmountPolicy)
         {
             if amount < min_amount {
+                reentrancy_guard::release(&env);
                 return Err(Error::AmountBelowMinimum);
             }
             if amount > max_amount {
+                reentrancy_guard::release(&env);
                 return Err(Error::AmountAboveMaximum);
             }
         }
         soroban_sdk::log!(&env, "amount policy ok");
+
+        // 7. Business logic: bounty must not already exist
+        if env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            reentrancy_guard::release(&env);
+            return Err(Error::BountyExists);
+        }
+        soroban_sdk::log!(&env, "bounty exists ok");
 
         let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
@@ -1883,21 +1904,34 @@ impl BountyEscrowContract {
         amount: i128,
         deadline: u64,
     ) -> Result<(), Error> {
+        // Validation precedence (deterministic ordering):
+        // 1. Reentrancy guard
+        // 2. Contract initialized
+        // 3. Paused (operational state)
+        // 4. Rate limiting
+        // 5. Authorization
+        // 6. Business logic (bounty uniqueness, amount policy)
+
+        // 1. Reentrancy guard
         reentrancy_guard::acquire(&env);
 
-        anti_abuse::check_rate_limit(&env, depositor.clone());
+        // 2. Contract must be initialized
+        if !env.storage().instance().has(&DataKey::Admin) {
+            reentrancy_guard::release(&env);
+            return Err(Error::NotInitialized);
+        }
 
+        // 3. Operational state: paused
         if Self::check_paused(&env, symbol_short!("lock")) {
             reentrancy_guard::release(&env);
             return Err(Error::FundsPaused);
         }
 
-        depositor.require_auth();
+        // 4. Rate limiting
+        anti_abuse::check_rate_limit(&env, depositor.clone());
 
-        if !env.storage().instance().has(&DataKey::Admin) {
-            reentrancy_guard::release(&env);
-            return Err(Error::NotInitialized);
-        }
+        // 5. Authorization
+        depositor.require_auth();
 
         if env.storage().persistent().has(&DataKey::Escrow(bounty_id))
             || env
@@ -1970,26 +2004,42 @@ impl BountyEscrowContract {
     /// Release funds to the contributor.
     /// Only the admin (backend) can authorize this.
     pub fn release_funds(env: Env, bounty_id: u64, contributor: Address) -> Result<(), Error> {
-        if Self::check_paused(&env, symbol_short!("release")) {
-            return Err(Error::FundsPaused);
-        }
-        let _start = env.ledger().timestamp();
+        // Validation precedence (deterministic ordering):
+        // 1. Reentrancy guard
+        // 2. Contract initialized
+        // 3. Paused (operational state)
+        // 4. Authorization
+        // 5. Business logic (bounty exists, funds locked)
 
-        // Ensure contract is initialized
+        // 1. Reentrancy guard (manual inline guard used here for release_funds)
         if env.storage().instance().has(&DataKey::ReentrancyGuard) {
             panic!("Reentrancy detected");
         }
         env.storage()
             .instance()
             .set(&DataKey::ReentrancyGuard, &true);
+
+        // 2. Contract must be initialized
         if !env.storage().instance().has(&DataKey::Admin) {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::NotInitialized);
         }
 
+        // 3. Operational state: paused
+        if Self::check_paused(&env, symbol_short!("release")) {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
+            return Err(Error::FundsPaused);
+        }
+
+        let _start = env.ledger().timestamp();
+
+        // 4. Authorization
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
+        // 5. Business logic: bounty must exist and be locked
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::BountyNotFound);
         }
 

@@ -629,6 +629,9 @@ mod test_serialization_compatibility;
 mod test_risk_flags;
 mod test_maintenance_mode;
 
+#[cfg(test)]
+mod test_deterministic_error_ordering;
+
 
 
 // ========================================================================
@@ -962,10 +965,22 @@ impl ProgramEscrowContract {
     /// # Returns
     /// Updated ProgramData with locked funds
     pub fn lock_program_funds(env: Env, amount: i128) -> ProgramData {
+        // Validation precedence (deterministic ordering):
+        // 1. Contract initialized
+        // 2. Paused (operational state)
+        // 3. Input validation (amount)
+
+        // 1. Contract must be initialized
+        if !env.storage().instance().has(&PROGRAM_DATA) {
+            panic!("Program not initialized");
+        }
+
+        // 2. Operational state: paused
         if Self::check_paused(&env, symbol_short!("lock")) {
             panic!("Funds Paused");
         }
 
+        // 3. Input validation
         if amount <= 0 {
             panic!("Amount must be greater than zero");
         }
@@ -974,7 +989,7 @@ impl ProgramEscrowContract {
             .storage()
             .instance()
             .get(&PROGRAM_DATA)
-            .unwrap_or_else(|| panic!("Program not initialized"));
+            .unwrap();
 
         // Update balances
         program_data.total_funds += amount;
@@ -1393,28 +1408,38 @@ impl ProgramEscrowContract {
     /// # Returns
     /// Updated ProgramData after payouts
     pub fn batch_payout(env: Env, recipients: Vec<Address>, amounts: Vec<i128>) -> ProgramData {
-        // Reentrancy guard: Check and set
+        // Validation precedence (deterministic ordering):
+        // 1. Reentrancy guard
+        // 2. Contract initialized
+        // 3. Paused (operational state)
+        // 4. Authorization
+        // 5. Input validation (batch size, amounts)
+        // 6. Business logic (sufficient balance)
+
+        // 1. Reentrancy guard
         reentrancy_guard::check_not_entered(&env);
         reentrancy_guard::set_entered(&env);
 
+        // 2. Contract must be initialized
+        let program_data: ProgramData = env
+            .storage()
+            .instance()
+            .get(&PROGRAM_DATA)
+            .unwrap_or_else(|| {
+                reentrancy_guard::clear_entered(&env);
+                panic!("Program not initialized")
+            });
+
+        // 3. Operational state: paused
         if Self::check_paused(&env, symbol_short!("release")) {
             reentrancy_guard::clear_entered(&env);
             panic!("Funds Paused");
         }
 
-        // Verify authorization
-        let program_data: ProgramData =
-            env.storage()
-                .instance()
-                .get(&PROGRAM_DATA)
-                .unwrap_or_else(|| {
-                    reentrancy_guard::clear_entered(&env);
-                    panic!("Program not initialized")
-                });
-
+        // 4. Authorization
         program_data.authorized_payout_key.require_auth();
 
-        // Validate input lengths match
+        // 5. Input validation
         if recipients.len() != amounts.len() {
             reentrancy_guard::clear_entered(&env);
             panic!("Recipients and amounts vectors must have the same length");
@@ -1438,7 +1463,7 @@ impl ProgramEscrowContract {
             });
         }
 
-        // Validate sufficient balance
+        // 6. Business logic: sufficient balance
         if total_payout > program_data.remaining_balance {
             reentrancy_guard::clear_entered(&env);
             panic!("Insufficient balance");
@@ -1501,34 +1526,44 @@ impl ProgramEscrowContract {
     /// # Returns
     /// Updated ProgramData after payout
     pub fn single_payout(env: Env, recipient: Address, amount: i128) -> ProgramData {
-        // Reentrancy guard: Check and set
+        // Validation precedence (deterministic ordering):
+        // 1. Reentrancy guard
+        // 2. Contract initialized
+        // 3. Paused (operational state)
+        // 4. Authorization
+        // 5. Input validation (amount)
+        // 6. Business logic (sufficient balance)
+
+        // 1. Reentrancy guard
         reentrancy_guard::check_not_entered(&env);
         reentrancy_guard::set_entered(&env);
 
+        // 2. Contract must be initialized
+        let program_data: ProgramData = env
+            .storage()
+            .instance()
+            .get(&PROGRAM_DATA)
+            .unwrap_or_else(|| {
+                reentrancy_guard::clear_entered(&env);
+                panic!("Program not initialized")
+            });
+
+        // 3. Operational state: paused
         if Self::check_paused(&env, symbol_short!("release")) {
             reentrancy_guard::clear_entered(&env);
             panic!("Funds Paused");
         }
 
-        // Verify authorization
-        let program_data: ProgramData =
-            env.storage()
-                .instance()
-                .get(&PROGRAM_DATA)
-                .unwrap_or_else(|| {
-                    reentrancy_guard::clear_entered(&env);
-                    panic!("Program not initialized")
-                });
-
+        // 4. Authorization
         program_data.authorized_payout_key.require_auth();
 
-        // Validate amount
+        // 5. Input validation
         if amount <= 0 {
             reentrancy_guard::clear_entered(&env);
             panic!("Amount must be greater than zero");
         }
 
-        // Validate sufficient balance
+        // 6. Business logic: sufficient balance
         if amount > program_data.remaining_balance {
             reentrancy_guard::clear_entered(&env);
             panic!("Insufficient balance");
