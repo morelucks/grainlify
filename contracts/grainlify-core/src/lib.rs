@@ -572,6 +572,77 @@ pub struct CoreConfigSnapshot {
     pub multisig_signers: Vec<Address>,
 }
 
+/// Comparison result between two [`CoreConfigSnapshot`]s.
+///
+/// Produced by [`GrainlifyContract::compare_snapshots`] to highlight what
+/// changed between two points in time. Every field is `true` when the
+/// corresponding value differs between the two snapshots.
+///
+/// # Usage
+/// Auditors and off-chain tooling can call `compare_snapshots(old_id, new_id)`
+/// to quickly identify configuration drift without fetching and diffing
+/// full snapshot payloads.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotDiff {
+    /// ID of the earlier ("before") snapshot.
+    pub from_id: u64,
+    /// ID of the later ("after") snapshot.
+    pub to_id: u64,
+    /// `true` when the admin address changed between snapshots.
+    pub admin_changed: bool,
+    /// `true` when the contract version changed between snapshots.
+    pub version_changed: bool,
+    /// `true` when the `previous_version` field changed.
+    pub previous_version_changed: bool,
+    /// `true` when the multisig threshold changed.
+    pub multisig_threshold_changed: bool,
+    /// `true` when the multisig signer set changed.
+    pub multisig_signers_changed: bool,
+    /// Version in the "from" snapshot.
+    pub from_version: u32,
+    /// Version in the "to" snapshot.
+    pub to_version: u32,
+}
+
+/// Aggregated rollback intelligence for recovery drills.
+///
+/// Returned by [`GrainlifyContract::get_rollback_info`] to give operators a
+/// single-call view of everything needed to assess whether a rollback is
+/// possible and what it would entail.
+///
+/// All nested struct fields are flattened to scalar types for Soroban
+/// serialization compatibility.
+///
+/// # Security note
+/// This is a pure view function — no authorization required, no state mutation.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RollbackInfo {
+    /// Current on-chain contract version.
+    pub current_version: u32,
+    /// Version before the last upgrade (0 if never upgraded).
+    pub previous_version: u32,
+    /// `true` when a `previous_version` exists and a rollback target is known.
+    pub rollback_available: bool,
+    /// `true` when a migration state record exists.
+    pub has_migration: bool,
+    /// Migration source version (0 if no migration).
+    pub migration_from_version: u32,
+    /// Migration target version (0 if no migration).
+    pub migration_to_version: u32,
+    /// Timestamp when the last migration completed (0 if no migration).
+    pub migration_timestamp: u64,
+    /// Number of retained configuration snapshots available for restore.
+    pub snapshot_count: u32,
+    /// `true` when at least one configuration snapshot exists.
+    pub has_snapshot: bool,
+    /// ID of the most recent snapshot (0 if none).
+    pub latest_snapshot_id: u64,
+    /// Version captured in the most recent snapshot (0 if none).
+    pub latest_snapshot_version: u32,
+}
+
 fn contract_is_initialized(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Version)
         || env.storage().instance().has(&DataKey::Admin)
@@ -744,12 +815,12 @@ impl GrainlifyContract {
 
         // Initialize multisig configuration
         MultiSig::init(&env, signers, threshold);
-        
+
         // Set initial version to mark contract as initialized
         env.storage().instance().set(&DataKey::Version, &VERSION);
 
         // Track successful operation
-        let caller = Address::generate(&env);
+        let caller = env.current_contract_address();
         monitoring::track_operation(&env, symbol_short!("init"), caller.clone(), true);
 
         // Track performance
@@ -1641,6 +1712,198 @@ impl GrainlifyContract {
     }
 
     // ========================================================================
+    // State Snapshot & Rollback-Oriented Queries
+    // ========================================================================
+
+    /// Retrieves a specific configuration snapshot by its ID.
+    ///
+    /// Returns `None` if the snapshot has been pruned or was never created.
+    /// This is a view-only function; no authorization required.
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `snapshot_id` - The unique ID of the snapshot to retrieve
+    ///
+    /// # Returns
+    /// * `Option<CoreConfigSnapshot>` - The snapshot if found, `None` otherwise
+    ///
+    /// # Security note
+    /// Pure view function — no auth required, no state mutation.
+    pub fn get_config_snapshot(env: Env, snapshot_id: u64) -> Option<CoreConfigSnapshot> {
+        env.storage()
+            .instance()
+            .get(&DataKey::ConfigSnapshot(snapshot_id))
+    }
+
+    /// Retrieves the most recent configuration snapshot.
+    ///
+    /// Returns `None` if no snapshots have been created yet.
+    /// This is useful for quick "what was the last known-good config?" checks
+    /// during recovery drills.
+    ///
+    /// # Returns
+    /// * `Option<CoreConfigSnapshot>` - The latest snapshot if any exist
+    ///
+    /// # Security note
+    /// Pure view function — no auth required, no state mutation.
+    pub fn get_latest_config_snapshot(env: Env) -> Option<CoreConfigSnapshot> {
+        let index: Vec<u64> = env
+            .storage()
+            .instance()
+            .get(&DataKey::SnapshotIndex)
+            .unwrap_or(Vec::new(&env));
+
+        if index.is_empty() {
+            return None;
+        }
+
+        let last_id = index.get(index.len() - 1).unwrap();
+        env.storage()
+            .instance()
+            .get(&DataKey::ConfigSnapshot(last_id))
+    }
+
+    /// Returns the number of retained configuration snapshots.
+    ///
+    /// The maximum is bounded by [`CONFIG_SNAPSHOT_LIMIT`] (currently 20).
+    /// Useful for monitoring dashboards and pre-restore validation.
+    ///
+    /// # Returns
+    /// * `u32` - Number of retained snapshots (0 to CONFIG_SNAPSHOT_LIMIT)
+    ///
+    /// # Security note
+    /// Pure view function — no auth required, no state mutation.
+    pub fn get_snapshot_count(env: Env) -> u32 {
+        let index: Vec<u64> = env
+            .storage()
+            .instance()
+            .get(&DataKey::SnapshotIndex)
+            .unwrap_or(Vec::new(&env));
+        index.len()
+    }
+
+    /// Compares two configuration snapshots and returns a diff summary.
+    ///
+    /// Useful for auditors who need to identify exactly what changed between
+    /// two points in time without manually diffing full snapshot payloads.
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `from_id` - ID of the earlier snapshot
+    /// * `to_id` - ID of the later snapshot
+    ///
+    /// # Panics
+    /// * If either snapshot ID does not correspond to a retained snapshot
+    ///
+    /// # Security note
+    /// Pure view function — no auth required, no state mutation.
+    pub fn compare_snapshots(env: Env, from_id: u64, to_id: u64) -> SnapshotDiff {
+        let from: CoreConfigSnapshot = env
+            .storage()
+            .instance()
+            .get(&DataKey::ConfigSnapshot(from_id))
+            .unwrap_or_else(|| panic!("Snapshot not found: from_id"));
+
+        let to: CoreConfigSnapshot = env
+            .storage()
+            .instance()
+            .get(&DataKey::ConfigSnapshot(to_id))
+            .unwrap_or_else(|| panic!("Snapshot not found: to_id"));
+
+        let signers_changed = if from.multisig_signers.len() != to.multisig_signers.len() {
+            true
+        } else {
+            let mut changed = false;
+            for i in 0..from.multisig_signers.len() {
+                if from.multisig_signers.get(i) != to.multisig_signers.get(i) {
+                    changed = true;
+                    break;
+                }
+            }
+            changed
+        };
+
+        SnapshotDiff {
+            from_id,
+            to_id,
+            admin_changed: from.admin != to.admin,
+            version_changed: from.version != to.version,
+            previous_version_changed: from.previous_version != to.previous_version,
+            multisig_threshold_changed: from.multisig_threshold != to.multisig_threshold,
+            multisig_signers_changed: signers_changed,
+            from_version: from.version,
+            to_version: to.version,
+        }
+    }
+
+    /// Returns aggregated rollback intelligence for recovery drills.
+    ///
+    /// Provides a single-call view combining:
+    /// - Current and previous version numbers
+    /// - Whether a rollback target exists
+    /// - Last migration state (if any)
+    /// - Snapshot availability and latest snapshot
+    ///
+    /// Operators can use this during incident response to quickly assess
+    /// rollback feasibility without making multiple contract calls.
+    ///
+    /// # Returns
+    /// * `RollbackInfo` - Aggregated rollback state
+    ///
+    /// # Security note
+    /// Pure view function — no auth required, no state mutation.
+    pub fn get_rollback_info(env: Env) -> RollbackInfo {
+        let current_version: u32 = env.storage().instance().get(&DataKey::Version).unwrap_or(0);
+
+        let previous_version_opt: Option<u32> =
+            env.storage().instance().get(&DataKey::PreviousVersion);
+
+        let last_migration: Option<MigrationState> =
+            env.storage().instance().get(&DataKey::MigrationState);
+
+        let index: Vec<u64> = env
+            .storage()
+            .instance()
+            .get(&DataKey::SnapshotIndex)
+            .unwrap_or(Vec::new(&env));
+
+        let snapshot_count = index.len();
+
+        let (has_snapshot, latest_snapshot_id, latest_snapshot_version) = if index.is_empty() {
+            (false, 0u64, 0u32)
+        } else {
+            let last_id = index.get(index.len() - 1).unwrap();
+            let snap: Option<CoreConfigSnapshot> = env
+                .storage()
+                .instance()
+                .get(&DataKey::ConfigSnapshot(last_id));
+            match snap {
+                Some(s) => (true, s.id, s.version),
+                None => (false, 0, 0),
+            }
+        };
+
+        let (has_migration, mig_from, mig_to, mig_ts) = match last_migration {
+            Some(m) => (true, m.from_version, m.to_version, m.migrated_at),
+            None => (false, 0, 0, 0),
+        };
+
+        RollbackInfo {
+            current_version,
+            previous_version: previous_version_opt.unwrap_or(0),
+            rollback_available: previous_version_opt.is_some(),
+            has_migration,
+            migration_from_version: mig_from,
+            migration_to_version: mig_to,
+            migration_timestamp: mig_ts,
+            snapshot_count,
+            has_snapshot,
+            latest_snapshot_id,
+            latest_snapshot_version,
+        }
+    }
+
+    // ========================================================================
     // State Migration System
     // ========================================================================
 
@@ -2008,6 +2271,7 @@ mod test {
     // Include end-to-end upgrade and migration tests
     pub mod e2e_upgrade_migration_tests;
     pub mod invariant_entrypoints_tests;
+    pub mod state_snapshot_tests;
     pub mod upgrade_rollback_tests;
 
     // WASM for testing (only available after building for wasm32 target)
