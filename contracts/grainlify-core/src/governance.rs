@@ -1,6 +1,6 @@
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, Symbol,
-};
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Map, Symbol};
+#[cfg(test)]
+use soroban_sdk::{contract, contractimpl};
 
 /// Lifecycle state for a governance proposal.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -151,9 +151,11 @@ pub(crate) fn validate_config(config: &GovernanceConfig) -> Result<(), Error> {
     Ok(())
 }
 
+#[cfg(test)]
 #[contract]
 pub struct GovernanceContract;
 
+#[cfg(test)]
 #[contractimpl]
 impl GovernanceContract {
     /// Initializes governance state for the standalone governance contract.
