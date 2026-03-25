@@ -5055,29 +5055,35 @@ impl traits::EscrowInterface for BountyEscrowContract {
 
     /// Refund funds to depositor through the trait interface
     fn refund(env: &Env, bounty_id: u64) -> Result<(), crate::Error> {
-        BountyEscrowContract::refund(env.clone(), bounty_id)
+        let refund_impl: fn(Env, u64) -> Result<(), Error> = BountyEscrowContract::refund;
+        refund_impl(env.clone(), bounty_id)
     }
 
     /// Get escrow information through the trait interface
     fn get_escrow_info(env: &Env, bounty_id: u64) -> Result<crate::Escrow, crate::Error> {
-        BountyEscrowContract::get_escrow_info(env.clone(), bounty_id)
+        let get_escrow_info_impl: fn(Env, u64) -> Result<Escrow, Error> =
+            BountyEscrowContract::get_escrow_info;
+        get_escrow_info_impl(env.clone(), bounty_id)
     }
 
     /// Get contract balance through the trait interface
     fn get_balance(env: &Env) -> Result<i128, crate::Error> {
-        BountyEscrowContract::get_balance(env.clone())
+        let get_balance_impl: fn(Env) -> Result<i128, Error> = BountyEscrowContract::get_balance;
+        get_balance_impl(env.clone())
     }
 }
 
 impl traits::UpgradeInterface for BountyEscrowContract {
     /// Get contract version
     fn get_version(env: &Env) -> u32 {
-        BountyEscrowContract::get_version(env.clone())
+        let get_version_impl: fn(Env) -> u32 = BountyEscrowContract::get_version;
+        get_version_impl(env.clone())
     }
 
     /// Set contract version (admin only)
     fn set_version(env: &Env, new_version: u32) -> Result<(), crate::Error> {
-        BountyEscrowContract::set_version(env.clone(), new_version)
+        let set_version_impl: fn(Env, u32) -> Result<(), Error> = BountyEscrowContract::set_version;
+        set_version_impl(env.clone(), new_version)
     }
 }
 
@@ -5089,15 +5095,36 @@ impl traits::PauseInterface for BountyEscrowContract {
         refund: Option<bool>,
         reason: Option<soroban_sdk::String>,
     ) -> Result<(), crate::Error> {
-        BountyEscrowContract::set_paused(env.clone(), lock, release, refund, reason)
+        let set_paused_impl:
+            fn(Env, Option<bool>, Option<bool>, Option<bool>, Option<soroban_sdk::String>) -> Result<(), Error> =
+            BountyEscrowContract::set_paused;
+        set_paused_impl(env.clone(), lock, release, refund, reason)
     }
 
     fn get_pause_flags(env: &Env) -> crate::PauseFlags {
-        BountyEscrowContract::get_pause_flags(env)
+        env.storage()
+            .instance()
+            .get(&DataKey::PauseFlags)
+            .unwrap_or(PauseFlags {
+                lock_paused: false,
+                release_paused: false,
+                refund_paused: false,
+                pause_reason: None,
+                paused_at: 0,
+            })
     }
 
     fn is_operation_paused(env: &Env, operation: soroban_sdk::Symbol) -> bool {
-        BountyEscrowContract::check_paused(env, operation)
+        let flags = <BountyEscrowContract as traits::PauseInterface>::get_pause_flags(env);
+        if operation == symbol_short!("lock") {
+            flags.lock_paused
+        } else if operation == symbol_short!("release") {
+            flags.release_paused
+        } else if operation == symbol_short!("refund") {
+            flags.refund_paused
+        } else {
+            false
+        }
     }
 }
 
@@ -5109,17 +5136,14 @@ impl traits::FeeInterface for BountyEscrowContract {
         fee_recipient: Option<Address>,
         fee_enabled: Option<bool>,
     ) -> Result<(), crate::Error> {
-        BountyEscrowContract::update_fee_config(
-            env.clone(),
-            lock_fee_rate,
-            release_fee_rate,
-            fee_recipient,
-            fee_enabled,
-        )
+        let update_fee_config_impl:
+            fn(Env, Option<i128>, Option<i128>, Option<Address>, Option<bool>) -> Result<(), Error> =
+            BountyEscrowContract::update_fee_config;
+        update_fee_config_impl(env.clone(), lock_fee_rate, release_fee_rate, fee_recipient, fee_enabled)
     }
 
     fn get_fee_config(env: &Env) -> crate::FeeConfig {
-        BountyEscrowContract::get_fee_config(env.clone())
+        BountyEscrowContract::get_fee_config_internal(env)
     }
 }
 
