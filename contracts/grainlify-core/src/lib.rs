@@ -425,9 +425,9 @@ mod monitoring {
 #[cfg(test)]
 mod test_core_monitoring;
 #[cfg(test)]
-mod test_performance_stats;
-#[cfg(test)]
 mod test_serialization_compatibility;
+#[cfg(test)]
+mod test_pseudo_randomness;
 #[cfg(test)]
 mod test_version_helpers;
 
