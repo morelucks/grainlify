@@ -3072,8 +3072,19 @@ impl BountyEscrowContract {
         Ok(())
     }
 
-    /// Refund funds to the original depositor if the deadline has passed.
-    /// Refunds the full remaining_amount (accounts for any prior partial releases).
+    /// Refunds remaining funds when refund conditions are met.
+    ///
+    /// # Authorization
+    /// Refund execution requires authenticated authorization from the contract admin
+    /// and the escrow depositor.
+    ///
+    /// # Eligibility
+    /// Refund is allowed when either:
+    /// 1. The deadline has passed (standard full refund to depositor), or
+    /// 2. An admin approval exists (early, partial, or custom-recipient refund).
+    ///
+    /// # Errors
+    /// Returns `Error::NotInitialized` if admin is not set.
     pub fn refund(env: Env, bounty_id: u64) -> Result<(), Error> {
         let caller = env
             .storage()
@@ -3100,6 +3111,15 @@ impl BountyEscrowContract {
             .persistent()
             .get(&DataKey::Escrow(bounty_id))
             .unwrap();
+
+        // Require authenticated approval from both admin and depositor.
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        escrow.depositor.require_auth();
 
         if escrow.status != EscrowStatus::Locked && escrow.status != EscrowStatus::PartiallyRefunded
         {
