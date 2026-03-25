@@ -8,6 +8,7 @@ enum DataKey {
     Config,
     Proposal(u64),
     ProposalCounter,
+    Paused,
 }
 
 /// =======================
@@ -41,6 +42,8 @@ pub enum MultiSigError {
     AlreadyExecuted,
     ThresholdNotMet,
     InvalidThreshold,
+    ContractPaused,
+    StateInconsistent,
 }
 
 /// =======================
@@ -121,12 +124,52 @@ impl MultiSig {
             .publish((symbol_short!("approved"),), (proposal_id, signer));
     }
 
-    /// Check if proposal is executable
+    /// Check if proposal is executable with enhanced security validation
     pub fn can_execute(env: &Env, proposal_id: u64) -> bool {
+        // First check if contract is in a healthy state
+        if Self::is_contract_paused(env) || Self::is_state_inconsistent(env) {
+            return false;
+        }
+
         let config = Self::get_config(env);
         let proposal = Self::get_proposal(env, proposal_id);
 
         !proposal.executed && proposal.approvals.len() >= config.threshold
+    }
+
+    /// Check if contract is paused (placeholder for future pause functionality)
+    pub fn is_contract_paused(env: &Env) -> bool {
+        // For now, check if there's a pause flag in storage
+        // This can be extended with actual pause logic
+        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
+    }
+
+    /// Check if contract state is consistent using invariants
+    pub fn is_state_inconsistent(env: &Env) -> bool {
+        // Use the monitoring module's invariant check
+        !super::monitoring::verify_invariants(env)
+    }
+
+    /// Pause contract (emergency function)
+    pub fn pause(env: &Env, signer: Address) {
+        signer.require_auth();
+        
+        let config = Self::get_config(env);
+        Self::assert_signer(&config, &signer);
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+        env.events().publish((symbol_short!("paused"),), signer);
+    }
+
+    /// Unpause contract
+    pub fn unpause(env: &Env, signer: Address) {
+        signer.require_auth();
+        
+        let config = Self::get_config(env);
+        Self::assert_signer(&config, &signer);
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.events().publish((symbol_short!("unpaused"),), signer);
     }
 
     /// Mark proposal as executed (caller executes action externally)
