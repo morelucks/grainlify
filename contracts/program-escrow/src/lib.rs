@@ -1351,16 +1351,22 @@ impl ProgramEscrowContract {
     pub fn configure_circuit_breaker(
         env: Env,
         caller: Address,
-        _threshold: u32,
-        _lookback: u32,
-        _cooldown: u32,
+        failure_threshold: u32,
+        success_threshold: u32,
+        max_error_log: u32,
     ) {
         caller.require_auth();
         let admin = error_recovery::get_circuit_admin(&env).expect("Circuit admin not set");
         if caller != admin {
             panic!("Unauthorized: only circuit admin can configure");
         }
-        // Logic to update config in storage would go here
+        
+        let config = error_recovery::CircuitBreakerConfig {
+            failure_threshold,
+            success_threshold,
+            max_error_log,
+        };
+        error_recovery::set_config(&env, config);
     }
 
     pub fn update_rate_limit_config(
@@ -1381,6 +1387,12 @@ impl ProgramEscrowContract {
         env.storage()
             .instance()
             .set(&DataKey::RateLimitConfig, &config);
+
+        // Emit audit event for rate limit config update
+        env.events().publish(
+            (symbol_short!("rate_lim"), symbol_short!("update")),
+            (window_size, max_operations, cooldown_period, admin, env.ledger().timestamp()),
+        );
     }
 
     pub fn get_rate_limit_config(env: Env) -> RateLimitConfig {
@@ -1431,8 +1443,8 @@ impl ProgramEscrowContract {
         // 2. Contract initialized
         // 3. Paused (operational state)
         // 4. Authorization
-        // 5. Input validation (batch size, amounts)
         // 6. Business logic (sufficient balance)
+        // 7. Circuit breaker check
 
         // 1. Reentrancy guard
         reentrancy_guard::check_not_entered(&env);
@@ -1487,6 +1499,16 @@ impl ProgramEscrowContract {
             panic!("Insufficient balance");
         }
 
+        // 7. Circuit breaker check
+        if let Err(err_code) = error_recovery::check_and_allow_with_thresholds(&env) {
+            reentrancy_guard::clear_entered(&env);
+            if err_code == error_recovery::ERR_CIRCUIT_OPEN {
+                panic!("Circuit breaker is OPEN");
+            } else {
+                panic!("Operation rejected by circuit breaker");
+            }
+        }
+
         // Execute transfers
         let mut updated_history = program_data.payout_history.clone();
         let timestamp = env.ledger().timestamp();
@@ -1499,6 +1521,11 @@ impl ProgramEscrowContract {
 
             // Transfer funds from contract to recipient
             token_client.transfer(&contract_address, &recipient, &amount);
+            
+            // Record success for circuit breaker and threshold monitor
+            error_recovery::record_success(&env);
+            threshold_monitor::record_operation_success(&env);
+            threshold_monitor::record_outflow(&env, amount);
 
             // Record payout
             let payout_record = PayoutRecord {
@@ -1549,8 +1576,8 @@ impl ProgramEscrowContract {
         // 2. Contract initialized
         // 3. Paused (operational state)
         // 4. Authorization
-        // 5. Input validation (amount)
         // 6. Business logic (sufficient balance)
+        // 7. Circuit breaker check
 
         // 1. Reentrancy guard
         reentrancy_guard::check_not_entered(&env);
@@ -1587,10 +1614,25 @@ impl ProgramEscrowContract {
             panic!("Insufficient balance");
         }
 
+        // 7. Circuit breaker check
+        if let Err(err_code) = error_recovery::check_and_allow_with_thresholds(&env) {
+            reentrancy_guard::clear_entered(&env);
+            if err_code == error_recovery::ERR_CIRCUIT_OPEN {
+                panic!("Circuit breaker is OPEN");
+            } else {
+                panic!("Operation rejected by circuit breaker");
+            }
+        }
+
         // Transfer funds from contract to recipient
         let contract_address = env.current_contract_address();
         let token_client = token::Client::new(&env, &program_data.token_address);
         token_client.transfer(&contract_address, &recipient, &amount);
+
+        // Record success for circuit breaker and threshold monitor
+        error_recovery::record_success(&env);
+        threshold_monitor::record_operation_success(&env);
+        threshold_monitor::record_outflow(&env, amount);
 
         // Record payout
         let timestamp = env.ledger().timestamp();

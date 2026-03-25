@@ -134,9 +134,22 @@ pub fn get_config(env: &Env) -> CircuitBreakerConfig {
 
 /// Sets the circuit breaker configuration. Admin only (caller must enforce auth).
 pub fn set_config(env: &Env, config: CircuitBreakerConfig) {
+    let prev_config = get_config(env);
     env.storage()
         .persistent()
         .set(&CircuitBreakerKey::Config, &config);
+
+    // Emit audit event for config change
+    env.events().publish(
+        (symbol_short!("circuit"), symbol_short!("cb_cfg")),
+        (
+            prev_config.failure_threshold,
+            config.failure_threshold,
+            prev_config.success_threshold,
+            config.success_threshold,
+            env.ledger().timestamp(),
+        ),
+    );
 }
 
 /// Returns the current circuit state.
@@ -308,16 +321,27 @@ pub fn record_failure(
         .persistent()
         .set(&CircuitBreakerKey::ErrorLog, &log);
 
-    emit_circuit_event(env, symbol_short!("cb_fail"), failures);
+    emit_circuit_event_detailed(
+        env,
+        symbol_short!("cb_fail"),
+        failures,
+        Some(operation),
+        Some(program_id),
+        Some(error_code),
+    );
 
     // Open circuit if threshold exceeded
     if failures >= config.failure_threshold {
-        open_circuit(env);
+        open_circuit_internal(env, symbol_short!("auto"));
     }
 }
 
 /// Transitions the circuit to **Open** state.
 pub fn open_circuit(env: &Env) {
+    open_circuit_internal(env, symbol_short!("manual"));
+}
+
+fn open_circuit_internal(env: &Env, reason: soroban_sdk::Symbol) {
     let now = env.ledger().timestamp();
     env.storage()
         .persistent()
@@ -329,7 +353,10 @@ pub fn open_circuit(env: &Env) {
         .persistent()
         .set(&CircuitBreakerKey::SuccessCount, &0u32);
 
-    emit_circuit_event(env, symbol_short!("cb_open"), get_failure_count(env));
+    env.events().publish(
+        (symbol_short!("circuit"), symbol_short!("cb_open")),
+        (get_failure_count(env), reason, now),
+    );
 }
 
 /// Transitions the circuit to **HalfOpen** state (admin-initiated reset attempt).
@@ -361,7 +388,10 @@ pub fn close_circuit(env: &Env) {
         .persistent()
         .set(&CircuitBreakerKey::OpenedAt, &0u64);
 
-    emit_circuit_event(env, symbol_short!("cb_close"), 0);
+    env.events().publish(
+        (symbol_short!("circuit"), symbol_short!("cb_close")),
+        (env.ledger().timestamp(),),
+    );
 }
 
 /// **Admin reset**: moves Open → HalfOpen, or HalfOpen/Closed → Closed.
@@ -379,6 +409,14 @@ pub fn reset_circuit_breaker(env: &Env, admin: &Address) {
     }
 
     let state = get_state(env);
+    let now = env.ledger().timestamp();
+
+    // Emit audit event for manual reset
+    env.events().publish(
+        (symbol_short!("circuit"), symbol_short!("cb_reset")),
+        (admin.clone(), state.clone(), now),
+    );
+
     match state {
         CircuitState::Open => half_open_circuit(env),
         CircuitState::HalfOpen | CircuitState::Closed => close_circuit(env),
@@ -402,6 +440,12 @@ pub fn set_circuit_admin(env: &Env, new_admin: Address, caller: Option<Address>)
     env.storage()
         .persistent()
         .set(&CircuitBreakerKey::Admin, &new_admin);
+
+    // Emit audit event for admin change
+    env.events().publish(
+        (symbol_short!("circuit"), symbol_short!("cb_adm")),
+        (existing, new_admin, env.ledger().timestamp()),
+    );
 }
 
 /// Returns the circuit breaker admin address, if set.
@@ -577,6 +621,26 @@ fn emit_circuit_event(env: &Env, event_type: soroban_sdk::Symbol, value: u32) {
     env.events().publish(
         (symbol_short!("circuit"), event_type),
         (value, env.ledger().timestamp()),
+    );
+}
+
+fn emit_circuit_event_detailed(
+    env: &Env,
+    event_type: soroban_sdk::Symbol,
+    value: u32,
+    operation: Option<soroban_sdk::Symbol>,
+    program_id: Option<String>,
+    error_code: Option<u32>,
+) {
+    env.events().publish(
+        (symbol_short!("circuit"), event_type),
+        (
+            value,
+            operation,
+            program_id,
+            error_code,
+            env.ledger().timestamp(),
+        ),
     );
 }
 
