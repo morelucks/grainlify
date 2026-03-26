@@ -1,5 +1,5 @@
 use crate::CapabilityAction;
-use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env};
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Symbol};
 
 pub const EVENT_VERSION_V2: u32 = 2;
 
@@ -414,4 +414,46 @@ pub struct CapabilityRevoked {
 pub fn emit_capability_revoked(env: &Env, event: CapabilityRevoked) {
     let topics = (symbol_short!("cap_rev"), event.capability_id);
     env.events().publish(topics, event);
+}
+
+/// Emitted when an operation's measured resource usage approaches the
+/// configured cap (at or above `WARNING_THRESHOLD_BPS / 10_000` of the cap).
+/// Only emitted in test / testutils builds; see `gas_budget` module docs.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GasBudgetCapApproached {
+    /// Canonical operation symbol (e.g. `symbol_short!("lock")`).
+    pub operation: Symbol,
+    /// Measured CPU instructions consumed by this call.
+    pub cpu_used: u64,
+    /// Measured memory bytes consumed by this call.
+    pub mem_used: u64,
+    /// Configured CPU instruction cap (`0` = uncapped).
+    pub cpu_cap: u64,
+    /// Configured memory byte cap (`0` = uncapped).
+    pub mem_cap: u64,
+    /// The warning threshold that was crossed, in basis points.
+    pub threshold_bps: u32,
+    /// Ledger timestamp at the time of the check.
+    pub timestamp: u64,
+}
+
+/// Emitted when an operation's measured resource usage exceeds the configured
+/// cap. When `GasBudgetConfig::enforce` is `true` this accompanies a
+/// transaction revert. Only emitted in test / testutils builds.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GasBudgetCapExceeded {
+    /// Canonical operation symbol (e.g. `symbol_short!("lock")`).
+    pub operation: Symbol,
+    /// Measured CPU instructions consumed by this call.
+    pub cpu_used: u64,
+    /// Measured memory bytes consumed by this call.
+    pub mem_used: u64,
+    /// Configured CPU instruction cap (`0` = uncapped).
+    pub cpu_cap: u64,
+    /// Configured memory byte cap (`0` = uncapped).
+    pub mem_cap: u64,
+    /// Ledger timestamp at the time of the check.
+    pub timestamp: u64,
 }

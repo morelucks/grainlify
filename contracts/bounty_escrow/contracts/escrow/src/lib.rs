@@ -18,9 +18,12 @@ mod test_multi_token_fees;
 mod test_rbac;
 #[cfg(test)]
 mod test_risk_flags;
+pub mod gas_budget;
 mod traits;
 pub mod upgrade_safety;
 
+#[cfg(test)]
+mod test_gas_budget;
 #[cfg(test)]
 mod test_maintenance_mode;
 
@@ -604,6 +607,11 @@ pub enum Error {
     InvalidSelectionInput = 42,
     /// Returned when an upgrade safety pre-check fails
     UpgradeSafetyCheckFailed = 43,
+    /// Returned when an operation's measured CPU or memory consumption exceeds
+    /// the configured cap and [`gas_budget::GasBudgetConfig::enforce`] is `true`.
+    /// The Soroban host reverts all storage writes and token transfers in the
+    /// transaction atomically. Only reachable in test / testutils builds.
+    GasBudgetExceeded = 44,
 }
 
 /// Bit flag: escrow or payout should be treated as elevated risk (indexers, UIs).
@@ -762,6 +770,9 @@ pub enum DataKey {
     NetworkId,
 
     MaintenanceMode, // bool flag
+    /// Per-operation gas budget caps configured by the admin.
+    /// See [`gas_budget::GasBudgetConfig`].
+    GasBudgetConfig,
 }
 
 #[contracttype]
@@ -2122,6 +2133,9 @@ impl BountyEscrowContract {
 
         // 1. GUARD: acquire reentrancy lock
         reentrancy_guard::acquire(&env);
+        // Snapshot resource meters for gas cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        let gas_snapshot = gas_budget::capture(&env);
 
         // 2. Contract must be initialized before any other check
         if !env.storage().instance().has(&DataKey::Admin) {
@@ -2275,6 +2289,22 @@ impl BountyEscrowContract {
 
         // INV-2: Verify aggregate balance matches token balance after lock
         multitoken_invariants::assert_after_lock(&env);
+
+        // Gas budget cap enforcement (test / testutils only; see `gas_budget` module docs).
+        #[cfg(any(test, feature = "testutils"))]
+        {
+            let gas_cfg = gas_budget::get_config(&env);
+            if let Err(e) = gas_budget::check(
+                &env,
+                symbol_short!("lock"),
+                &gas_cfg.lock,
+                &gas_snapshot,
+                gas_cfg.enforce,
+            ) {
+                reentrancy_guard::release(&env);
+                return Err(e);
+            }
+        }
 
         // GUARD: release reentrancy lock
         reentrancy_guard::release(&env);
@@ -2536,6 +2566,9 @@ impl BountyEscrowContract {
         env.storage()
             .instance()
             .set(&DataKey::ReentrancyGuard, &true);
+        // Snapshot resource meters for gas cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        let gas_snapshot = gas_budget::capture(&env);
 
         // 2. Contract must be initialized
         if !env.storage().instance().has(&DataKey::Admin) {
@@ -2631,6 +2664,22 @@ impl BountyEscrowContract {
                 timestamp: env.ledger().timestamp(),
             },
         );
+
+        // Gas budget cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        {
+            let gas_cfg = gas_budget::get_config(&env);
+            if let Err(e) = gas_budget::check(
+                &env,
+                symbol_short!("release"),
+                &gas_cfg.release,
+                &gas_snapshot,
+                gas_cfg.enforce,
+            ) {
+                env.storage().instance().remove(&DataKey::ReentrancyGuard);
+                return Err(e);
+            }
+        }
 
         // Clear reentrancy guard
         env.storage().instance().remove(&DataKey::ReentrancyGuard);
@@ -3122,6 +3171,9 @@ impl BountyEscrowContract {
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
+        // Snapshot resource meters for gas cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        let gas_snapshot = gas_budget::capture(&env);
 
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
             return Err(Error::BountyNotFound);
@@ -3180,6 +3232,19 @@ impl BountyEscrowContract {
             },
         );
 
+        // Gas budget cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        {
+            let gas_cfg = gas_budget::get_config(&env);
+            gas_budget::check(
+                &env,
+                symbol_short!("p_rel"),
+                &gas_cfg.partial_release,
+                &gas_snapshot,
+                gas_cfg.enforce,
+            )?;
+        }
+
         Ok(())
     }
 
@@ -3212,6 +3277,9 @@ impl BountyEscrowContract {
         if Self::check_paused(&env, symbol_short!("refund")) {
             return Err(Error::FundsPaused);
         }
+        // Snapshot resource meters for gas cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        let gas_snapshot = gas_budget::capture(&env);
 
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
             return Err(Error::BountyNotFound);
@@ -3333,6 +3401,22 @@ impl BountyEscrowContract {
 
         // INV-2: Verify aggregate balance matches token balance after refund
         multitoken_invariants::assert_after_disbursement(&env);
+
+        // Gas budget cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        {
+            let gas_cfg = gas_budget::get_config(&env);
+            if let Err(e) = gas_budget::check(
+                &env,
+                symbol_short!("refund"),
+                &gas_cfg.refund,
+                &gas_snapshot,
+                gas_cfg.enforce,
+            ) {
+                reentrancy_guard::release(&env);
+                return Err(e);
+            }
+        }
 
         // GUARD: release reentrancy lock
         reentrancy_guard::release(&env);
@@ -4173,6 +4257,65 @@ impl BountyEscrowContract {
         ))
     }
 
+    /// Configure per-operation gas budget caps (admin only).
+    ///
+    /// Sets the maximum allowed CPU instructions and memory bytes for each
+    /// operation class. A value of `0` in either field means uncapped for that
+    /// dimension.
+    ///
+    /// When `enforce` is `true`, any operation that exceeds its cap returns
+    /// `Error::GasBudgetExceeded` and the transaction reverts atomically.
+    /// When `false`, caps are advisory: a `GasBudgetCapExceeded` event is
+    /// emitted but execution continues.
+    ///
+    /// # Platform note
+    /// Gas measurement uses Soroban's `env.budget()` API, which is available
+    /// only in the `testutils` feature. In production contracts, the
+    /// configuration is stored and readable via [`get_gas_budget`], but
+    /// runtime enforcement applies only when running under the test
+    /// environment. See `GAS_TESTS.md` and the `gas_budget` module docs for
+    /// guidance on choosing conservative cap values.
+    ///
+    /// # Errors
+    /// * `Error::NotInitialized` — `init` has not been called.
+    /// * `Error::Unauthorized` — caller is not the registered admin.
+    pub fn set_gas_budget(
+        env: Env,
+        lock: gas_budget::OperationBudget,
+        release: gas_budget::OperationBudget,
+        refund: gas_budget::OperationBudget,
+        partial_release: gas_budget::OperationBudget,
+        batch_lock: gas_budget::OperationBudget,
+        batch_release: gas_budget::OperationBudget,
+        enforce: bool,
+    ) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        let config = gas_budget::GasBudgetConfig {
+            lock,
+            release,
+            refund,
+            partial_release,
+            batch_lock,
+            batch_release,
+            enforce,
+        };
+        gas_budget::set_config(&env, config);
+        Ok(())
+    }
+
+    /// Return the current per-operation gas budget configuration.
+    ///
+    /// Returns the fully uncapped default if no configuration has been set.
+    pub fn get_gas_budget(env: Env) -> gas_budget::GasBudgetConfig {
+        gas_budget::get_config(&env)
+    }
+
     /// Batch lock funds for multiple bounties in a single atomic transaction.
     ///
     /// Locks between 1 and [`MAX_BATCH_SIZE`] bounties in one call, reducing
@@ -4231,6 +4374,9 @@ impl BountyEscrowContract {
 
         // GUARD: acquire reentrancy lock
         reentrancy_guard::acquire(&env);
+        // Snapshot resource meters for gas cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        let gas_snapshot = gas_budget::capture(&env);
         let result: Result<u32, Error> = (|| {
             if Self::get_deprecation_state(&env).deprecated {
                 return Err(Error::ContractDeprecated);
@@ -4375,6 +4521,23 @@ impl BountyEscrowContract {
             Ok(locked_count)
         })();
 
+        // Gas budget cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        if result.is_ok() {
+            let gas_cfg = gas_budget::get_config(&env);
+            if let Err(e) = gas_budget::check(
+                &env,
+                symbol_short!("b_lock"),
+                &gas_cfg.batch_lock,
+                &gas_snapshot,
+                gas_cfg.enforce,
+            ) {
+                reentrancy_guard::release(&env);
+                return Err(e);
+            }
+        }
+
+
         // GUARD: release reentrancy lock
         reentrancy_guard::release(&env);
         result
@@ -4435,6 +4598,9 @@ impl BountyEscrowContract {
         }
         // GUARD: acquire reentrancy lock
         reentrancy_guard::acquire(&env);
+        // Snapshot resource meters for gas cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        let gas_snapshot = gas_budget::capture(&env);
         let result: Result<u32, Error> = (|| {
             // Validate batch size
             let batch_size = items.len();
@@ -4549,6 +4715,22 @@ impl BountyEscrowContract {
 
             Ok(released_count)
         })();
+
+        // Gas budget cap enforcement (test / testutils only).
+        #[cfg(any(test, feature = "testutils"))]
+        if result.is_ok() {
+            let gas_cfg = gas_budget::get_config(&env);
+            if let Err(e) = gas_budget::check(
+                &env,
+                symbol_short!("b_rel"),
+                &gas_cfg.batch_release,
+                &gas_snapshot,
+                gas_cfg.enforce,
+            ) {
+                reentrancy_guard::release(&env);
+                return Err(e);
+            }
+        }
 
         // GUARD: release reentrancy lock
         reentrancy_guard::release(&env);
