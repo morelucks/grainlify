@@ -203,7 +203,7 @@ pub struct FeeCollectedEvent {
 }
 // ==================== MONITORING MODULE ====================
 mod monitoring {
-    use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
+    use soroban_sdk::{contracttype, Address, Env, String, Symbol};
 
     // Storage keys
     const OPERATION_COUNT: &str = "op_count";

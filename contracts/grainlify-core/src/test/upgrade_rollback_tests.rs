@@ -34,7 +34,7 @@
 extern crate std;
 
 use soroban_sdk::{
-    testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
+    testutils::{Address as _, Events},
     Address, BytesN, Env, IntoVal, Vec as SorobanVec,
 };
 
@@ -343,21 +343,49 @@ fn test_multiple_proposals_are_independent() {
     // p2 still only has zero approvals — must not be executable.
     // (Verified by the threshold check in execute_upgrade.)
     assert!(p2 > p1, "proposals are independent and have distinct IDs");
+
+    let p1_record = client
+        .get_upgrade_proposal(&p1)
+        .expect("first proposal metadata must exist");
+    let p2_record = client
+        .get_upgrade_proposal(&p2)
+        .expect("second proposal metadata must exist");
+
+    assert_eq!(p1_record.proposer, Some(signers[0].clone()));
+    assert_eq!(p1_record.wasm_hash, fake_wasm(&env));
+    assert_eq!(p2_record.proposer, Some(signers[1].clone()));
+    assert_eq!(p2_record.wasm_hash, fake_wasm_v2(&env));
 }
 
-/// `propose_upgrade` stores the WASM hash associated with the proposal.
-/// Verified indirectly: two proposals with different hashes get different IDs.
+/// `propose_upgrade` stores the upgrade metadata associated with the proposal.
 #[test]
-fn test_propose_upgrade_stores_wasm_hash_per_proposal() {
+fn test_propose_upgrade_stores_metadata_per_proposal() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, signers) = setup_multisig(&env);
 
-    let p1 = client.propose_upgrade(&signers[0], &fake_wasm(&env));
-    let p2 = client.propose_upgrade(&signers[0], &fake_wasm_v2(&env));
+    let wasm_hash = fake_wasm(&env);
+    let proposal_id = client.propose_upgrade(&signers[0], &wasm_hash);
+    let proposal = client
+        .get_upgrade_proposal(&proposal_id)
+        .expect("proposal metadata must exist");
 
-    // Different proposals for different WASM hashes.
-    assert_ne!(p1, p2, "each proposal gets a unique ID");
+    assert_eq!(
+        proposal.proposal_id, proposal_id,
+        "proposal id must round-trip"
+    );
+    assert_eq!(proposal.proposer, Some(signers[0].clone()));
+    assert_eq!(proposal.wasm_hash, wasm_hash);
+}
+
+/// Unknown proposal ids must not return upgrade metadata.
+#[test]
+fn test_get_upgrade_proposal_returns_none_for_unknown_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _signers) = setup_multisig(&env);
+
+    assert_eq!(client.get_upgrade_proposal(&999), None);
 }
 
 // ── get_admin view ────────────────────────────────────────────────────────────
