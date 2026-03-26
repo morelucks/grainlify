@@ -171,7 +171,11 @@ pub(crate) fn validate_config(config: &GovernanceConfig) -> Result<(), Error> {
     Ok(())
 }
 
-#[contract]
+// Shared governance types and helpers for Grainlify Core.
+//
+// This module must not export a second Soroban contract from the same crate,
+// otherwise entrypoints such as `init_governance` collide with
+// `GrainlifyContract` during `stellar contract build`.
 pub struct GovernanceContract;
 
 impl GovernanceContract {

@@ -210,9 +210,16 @@ fn test_stress_high_load_many_payouts() {
     let env = Env::default();
     let (client, _admin, token_client, _token_admin) = setup_program(&env, 1_000_000);
 
-    for _ in 0..100 {
-        let recipient = Address::generate(&env);
-        client.single_payout(&recipient, &3_000);
+    for _ in 0..10 {
+        let mut recipients = vec![&env];
+        let mut amounts = vec![&env];
+
+        for _ in 0..10 {
+            recipients.push_back(Address::generate(&env));
+            amounts.push_back(3_000);
+        }
+
+        client.batch_payout(&recipients, &amounts);
     }
 
     let info = client.get_program_info();
