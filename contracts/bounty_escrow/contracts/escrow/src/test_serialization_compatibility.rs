@@ -88,6 +88,8 @@ fn serialization_compatibility_public_types_and_events() {
         deadline,
         // Keep nested vectors minimal in goldens to avoid huge outputs.
         refund_history: soroban_sdk::vec![&env],
+        archived: false,
+        archived_at: None,
     };
 
     let samples: &[(&str, Val)] = &[
@@ -305,7 +307,6 @@ fn serialization_compatibility_public_types_and_events() {
                 operation_type: FeeOperationType::Release,
                 amount: 456,
                 fee_rate: 123,
-                fee_fixed: 0,
                 recipient: fee_recipient.clone(),
                 timestamp: 999,
             }

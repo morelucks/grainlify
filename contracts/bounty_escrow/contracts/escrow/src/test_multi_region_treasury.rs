@@ -198,7 +198,7 @@ mod test_multi_region_treasury {
 
         // Configure fee and treasury distribution
         client.set_treasury_distributions(&destinations, &true);
-        client.update_fee_config(&Some(1000), &Some(500), &None, &None, &None, &Some(true)) // 10% lock, 5% release
+        client.update_fee_config(&Some(1000), &Some(500), &None, &None, &None, &Some(true)); // 10% lock, 5% release
 
         // Mint tokens to depositor
         token_minter.mint(&depositor, &1000);
