@@ -1078,6 +1078,76 @@ impl BountyEscrowContract {
         }
         ordered
     }
+    /// Filter escrows by their current status (Locked, Released, etc.)
+        /// Stable ordering is guaranteed by the EscrowIndex.
+	    pub fn query_escrows_by_status(
+	            env: Env,
+		            status: EscrowStatus,
+			            offset: u32,
+				            limit: u32,
+					        ) -> Vec<EscrowInfo> {
+						        let index: Vec<u64> = env.storage().persistent().get(&DataKey::EscrowIndex).unwrap_or(Vec::new(&env));
+							        let mut results = Vec::new(&env);
+
+        // Start from offset to support stable pagination
+	        for i in offset..index.len() {
+		            if results.len() >= limit { break; }
+			                let id = index.get(i).unwrap();
+
+            // Reusing your existing get_escrow_info logic
+	                let info = Self::get_escrow_info(env.clone(), id);
+			            if info.status == status {
+				                    results.push_back(info);
+						                }
+								        }
+									        results
+										    }
+
+    /// Filter escrows by amount range [min, max]
+        pub fn query_escrows_by_amount(
+	        env: Env,
+		        min: i128,
+			        max: i128,
+				        offset: u32,
+					        limit: u32,
+						    ) -> Vec<EscrowInfo> {
+						            let index: Vec<u64> = env.storage().persistent().get(&DataKey::EscrowIndex).unwrap_or(Vec::new(&env));
+							            let mut results = Vec::new(&env);
+
+        for i in offset..index.len() {
+	            if results.len() >= limit { break; }
+		                let id = index.get(i).unwrap();
+				            let info = Self::get_escrow_info(env.clone(), id);
+
+            if info.amount >= min && info.amount <= max {
+	                    results.push_back(info);
+			                }
+					        }
+						        results
+							    }
+
+    /// Filter escrows by deadline range [min_ts, max_ts]
+        pub fn query_escrows_by_deadline(
+	        env: Env,
+		        min_ts: u64,
+			        max_ts: u64,
+				        offset: u32,
+					        limit: u32,
+						    ) -> Vec<EscrowInfo> {
+						            let index: Vec<u64> = env.storage().persistent().get(&DataKey::EscrowIndex).unwrap_or(Vec::new(&env));
+							            let mut results = Vec::new(&env);
+
+        for i in offset..index.len() {
+	            if results.len() >= limit { break; }
+		                let id = index.get(i).unwrap();
+				            let info = Self::get_escrow_info(env.clone(), id);
+
+            if info.deadline >= min_ts && info.deadline <= max_ts {
+	                    results.push_back(info);
+			                }
+					        }
+						        results
+							    }
 
     fn order_batch_release_items(
         env: &Env,
