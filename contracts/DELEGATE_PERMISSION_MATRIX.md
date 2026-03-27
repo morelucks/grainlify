@@ -51,5 +51,5 @@ Program:
 - `batch_payout_by`
 - `create_program_release_schedule_by`
 - `trigger_program_releases_by`
-- `release_program_schedule_manual_by`
+- `release_prog_schedule_manual_by`
 - `update_program_metadata`
