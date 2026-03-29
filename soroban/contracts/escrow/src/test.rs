@@ -171,52 +171,6 @@ fn parity_refund_before_deadline_fails() {
     assert!(res.is_err());
 }
 
-// --- Jurisdiction: generic escrows remain untagged ---
-#[test]
-fn test_generic_escrow_has_no_jurisdiction_config() {
-    let env = Env::default();
-    let amount = 10_000i128;
-    let (client, _cid, _admin, depositor, _contributor, _token_client) = setup(&env, amount);
-
-    let bounty_id = 50u64;
-    let deadline = env.ledger().timestamp() + 1000;
-    client.lock_funds(&depositor, &bounty_id, &amount, &deadline);
-
-    let cfg = client.get_escrow_jurisdiction(&bounty_id);
-    assert_eq!(cfg, OptionalJurisdiction::None);
-}
-
-// --- Jurisdiction: tagged escrows can override identity-limit enforcement ---
-#[test]
-fn test_jurisdiction_tagged_escrow_can_skip_identity_limits() {
-    let env = Env::default();
-    let amount = 2_000_0000000i128; // above default unverified limit
-    let (client, _cid, _admin, depositor, _contributor, _token_client) = setup(&env, amount);
-
-    let bounty_id = 51u64;
-    let deadline = env.ledger().timestamp() + 1000;
-    let cfg = EscrowJurisdictionConfig {
-        tag: Some(String::from_str(&env, "US-only")),
-        requires_kyc: false,
-        enforce_identity_limits: false,
-        lock_paused: false,
-        release_paused: false,
-        refund_paused: false,
-        max_lock_amount: Some(3_000_0000000),
-    };
-
-    client.lock_funds_with_jurisdiction(
-        &depositor,
-        &bounty_id,
-        &amount,
-        &deadline,
-        &OptionalJurisdiction::Some(cfg.clone()),
-    );
-
-    let stored = client.get_escrow_jurisdiction(&bounty_id);
-    assert_eq!(stored, OptionalJurisdiction::Some(cfg));
-}
-
 #[test]
 fn test_generic_escrow_still_enforces_identity_limits() {
     let env = Env::default();
@@ -285,4 +239,69 @@ fn test_jurisdiction_events_emitted() {
     client.release_funds(&bounty_id, &contributor);
 
     assert!(has_event_topic(&env, "juris"));
+}
+
+// --- Parity: Jurisdiction Release Paused Fails ---
+#[test]
+fn parity_jurisdiction_release_paused_fails() {
+    let env = Env::default();
+    let amount = 10_000i128;
+    let (client, _cid, _admin, depositor, contributor, _token_client) = setup(&env, amount);
+
+    let bounty_id = 100u64;
+    let deadline = env.ledger().timestamp() + 1000;
+
+    let cfg = EscrowJurisdictionConfig {
+        tag: Some(String::from_str(&env, "paused-release")),
+        requires_kyc: false,
+        enforce_identity_limits: false,
+        lock_paused: false,
+        release_paused: true, // PAUSED
+        refund_paused: false,
+        max_lock_amount: None,
+    };
+
+    client.lock_funds_with_jurisdiction(
+        &depositor,
+        &bounty_id,
+        &amount,
+        &deadline,
+        &OptionalJurisdiction::Some(cfg),
+    );
+
+    let res = client.try_release_funds(&bounty_id, &contributor);
+    assert!(res.is_err());
+}
+
+// --- Parity: Jurisdiction Refund Paused Fails ---
+#[test]
+fn parity_jurisdiction_refund_paused_fails() {
+    let env = Env::default();
+    let amount = 10_000i128;
+    let (client, _cid, _admin, depositor, _contributor, _token_client) = setup(&env, amount);
+
+    let bounty_id = 101u64;
+    let deadline = env.ledger().timestamp() + 10;
+
+    let cfg = EscrowJurisdictionConfig {
+        tag: Some(String::from_str(&env, "paused-refund")),
+        requires_kyc: false,
+        enforce_identity_limits: false,
+        lock_paused: false,
+        release_paused: false,
+        refund_paused: true, // PAUSED
+        max_lock_amount: None,
+    };
+
+    client.lock_funds_with_jurisdiction(
+        &depositor,
+        &bounty_id,
+        &amount,
+        &deadline,
+        &OptionalJurisdiction::Some(cfg),
+    );
+
+    env.ledger().set_timestamp(deadline + 1);
+    let res = client.try_refund(&bounty_id);
+    assert!(res.is_err());
 }

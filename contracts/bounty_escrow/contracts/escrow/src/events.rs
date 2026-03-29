@@ -29,10 +29,10 @@
 //!   (Checks-Effects-Interactions ordering) so they accurately reflect final
 //!   on-chain state.
 //! * No PII, KYC data, or private keys are ever emitted.
-//! * All `symbol_short!` strings are ≤ 8 bytes — Soroban silently truncates
-//!   longer strings, which would corrupt topic-based filtering.
+//! * All `symbol_short!` strings are ≤ 9 bytes — Soroban rejects longer values,
+//!   which would corrupt topic-based filtering.
 use crate::CapabilityAction;
-use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env};
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Symbol};
 
 // ── Version constant ─────────────────────────────────────────────────────────
 
@@ -166,10 +166,35 @@ pub fn emit_funds_released(env: &Env, event: FundsReleased) {
     env.events().publish(topics, event.clone());
 }
 
+// ── Refund trigger type ───────────────────────────────────────────────────────
+
+/// Discriminator indicating which code path triggered a refund.
+///
+/// Carried in [`FundsRefunded`] and [`RefundRecord`] so that indexers and
+/// auditors can distinguish between the three refund mechanisms without
+/// inspecting storage or transaction inputs.
+///
+/// | Variant | Trigger |
+/// |---------|---------|
+/// | `AdminApproval` | Admin called `approve_refund` then `refund` (existing dual-auth path). |
+/// | `DeadlineExpired` | `auto_refund` called permissionlessly after the deadline passed. |
+/// | `OracleAttestation` | Configured oracle called `oracle_refund` to attest a dispute outcome. |
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RefundTriggerType {
+    /// Admin-approved refund (existing dual-auth behavior).
+    AdminApproval,
+    /// Time-based auto-refund after deadline (permissionless).
+    DeadlineExpired,
+    /// Oracle-attested refund (dispute resolved in favor of depositor).
+    OracleAttestation,
+}
+
 /// Payload for the [`emit_funds_refunded`] event.
 ///
-/// Emitted after a successful refund via [`BountyEscrowContract::refund`]
-/// or `refund_resolved` (anonymous escrow path).
+/// Emitted after a successful refund via [`BountyEscrowContract::refund`],
+/// `refund_resolved` (anonymous escrow path), `oracle_refund`, or
+/// `auto_refund`.
 ///
 /// ### Topics
 /// | Index | Value |
@@ -182,6 +207,8 @@ pub fn emit_funds_released(env: &Env, event: FundsReleased) {
 ///   approval overrides the recipient (e.g. custom partial-refund target).
 /// - For anonymous escrows the depositor identity is never revealed; only
 ///   the on-chain resolver-approved `recipient` is used.
+/// - `trigger_type` identifies which refund path was taken so downstream
+///   consumers can distinguish oracle-attested from time-based refunds.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct FundsRefunded {
@@ -190,11 +217,46 @@ pub struct FundsRefunded {
     pub amount: i128,
     pub refund_to: Address,
     pub timestamp: u64,
+    /// Which code path triggered this refund.
+    pub trigger_type: RefundTriggerType,
 }
 
 /// Emit [`FundsRefunded`].
 pub fn emit_funds_refunded(env: &Env, event: FundsRefunded) {
     let topics = (symbol_short!("f_ref"), event.bounty_id);
+    env.events().publish(topics, event.clone());
+}
+
+// ── Oracle config event ───────────────────────────────────────────────────────
+
+/// Payload for the [`emit_oracle_config_updated`] event.
+///
+/// Emitted when the admin configures or updates the oracle address via
+/// [`BountyEscrowContract::set_oracle`].
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"orc_cfg"` |
+///
+/// ### Security notes
+/// - Only the admin can call `set_oracle`; this event serves as an
+///   on-chain audit trail of oracle configuration changes.
+/// - When `enabled = false` the oracle address is stored but
+///   `oracle_refund` calls will be rejected until re-enabled.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct OracleConfigUpdated {
+    pub version: u32,
+    pub oracle_address: Address,
+    pub enabled: bool,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+/// Emit [`OracleConfigUpdated`].
+pub fn emit_oracle_config_updated(env: &Env, event: OracleConfigUpdated) {
+    let topics = (symbol_short!("orc_cfg"),);
     env.events().publish(topics, event.clone());
 }
 
@@ -235,6 +297,7 @@ pub struct FeeCollected {
     pub operation_type: FeeOperationType, // determines if the fee was collected on lock or release.
     pub amount: i128,                     // actual fee amount transferred
     pub fee_rate: i128,                   // fee rate applied in basis points (1 bp = 0.01 %).
+    pub fee_fixed: i128,                  // flat fee component
     pub recipient: Address,
     pub timestamp: u64, // Ledger timestamp.
 }
@@ -291,6 +354,10 @@ pub struct FeeConfigUpdated {
     pub lock_fee_rate: i128,
     /// New release fee rate in basis points.
     pub release_fee_rate: i128,
+    /// New lock fixed fee.
+    pub lock_fixed_fee: i128,
+    /// New release fixed fee.
+    pub release_fixed_fee: i128,
     /// Address designated to receive fees.
     pub fee_recipient: Address,
     /// Whether fee collection is active after this update.
@@ -303,6 +370,26 @@ pub struct FeeConfigUpdated {
 pub fn emit_fee_config_updated(env: &Env, event: FeeConfigUpdated) {
     let topics = (symbol_short!("fee_cfg"),);
     env.events().publish(topics, event.clone());
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EscrowArchived {
+    pub version: u32,
+    pub bounty_id: u64,
+    pub timestamp: u64,
+}
+
+pub fn emit_archived(env: &Env, bounty_id: u64, timestamp: u64) {
+    let topics = (symbol_short!("archive"), bounty_id);
+    env.events().publish(
+        topics,
+        EscrowArchived {
+            version: EVENT_VERSION_V2,
+            bounty_id,
+            timestamp,
+        },
+    );
 }
 
 /// Payload for the [`emit_fee_routing_updated`] event.
@@ -841,8 +928,8 @@ pub fn emit_emergency_withdraw(env: &Env, event: EmergencyWithdrawEvent) {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapabilityIssued {
-    /// Unique monotonic capability identifier.
-    pub capability_id: u64,
+    /// Unique cryptographically secure capability identifier.
+    pub capability_id: BytesN<32>,
     /// Address that created and vouches for this capability.
     pub owner: Address,
     /// Address authorised to exercise this capability.
@@ -863,7 +950,7 @@ pub struct CapabilityIssued {
 
 /// Emit [`CapabilityIssued`]
 pub fn emit_capability_issued(env: &Env, event: CapabilityIssued) {
-    let topics = (symbol_short!("cap_new"), event.capability_id);
+    let topics = (symbol_short!("cap_new"), event.capability_id.clone());
     env.events().publish(topics, event);
 }
 
@@ -887,7 +974,7 @@ pub fn emit_capability_issued(env: &Env, event: CapabilityIssued) {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapabilityUsed {
     /// Capability that was exercised.
-    pub capability_id: u64,
+    pub capability_id: BytesN<32>,
     /// Address that exercised the capability.
     pub holder: Address,
     /// Action that was performed.
@@ -906,7 +993,7 @@ pub struct CapabilityUsed {
 
 /// Emit [`CapabilityUsed`]
 pub fn emit_capability_used(env: &Env, event: CapabilityUsed) {
-    let topics = (symbol_short!("cap_use"), event.capability_id);
+    let topics = (symbol_short!("cap_use"), event.capability_id.clone());
     env.events().publish(topics, event);
 }
 
@@ -929,13 +1016,190 @@ pub fn emit_capability_used(env: &Env, event: CapabilityUsed) {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapabilityRevoked {
     /// Capability that was revoked
-    pub capability_id: u64,
+    pub capability_id: BytesN<32>,
     pub owner: Address,
     pub revoked_at: u64,
 }
 
 /// Emit [`CapabilityRevoked`]
 pub fn emit_capability_revoked(env: &Env, event: CapabilityRevoked) {
-    let topics = (symbol_short!("cap_rev"), event.capability_id);
+    let topics = (symbol_short!("cap_rev"), event.capability_id.clone());
+    env.events().publish(topics, event);
+}
+
+/// Emitted when an operation's measured resource usage approaches the
+/// configured cap (at or above `WARNING_THRESHOLD_BPS / 10_000` of the cap).
+/// Only emitted in test / testutils builds; see `gas_budget` module docs.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GasBudgetCapApproached {
+    /// Canonical operation symbol (e.g. `symbol_short!("lock")`).
+    pub operation: Symbol,
+    /// Measured CPU instructions consumed by this call.
+    pub cpu_used: u64,
+    /// Measured memory bytes consumed by this call.
+    pub mem_used: u64,
+    /// Configured CPU instruction cap (`0` = uncapped).
+    pub cpu_cap: u64,
+    /// Configured memory byte cap (`0` = uncapped).
+    pub mem_cap: u64,
+    /// The warning threshold that was crossed, in basis points.
+    pub threshold_bps: u32,
+    /// Ledger timestamp at the time of the check.
+    pub timestamp: u64,
+}
+
+/// Emitted when an operation's measured resource usage exceeds the configured
+/// cap. When `GasBudgetConfig::enforce` is `true` this accompanies a
+/// transaction revert. Only emitted in test / testutils builds.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GasBudgetCapExceeded {
+    /// Canonical operation symbol (e.g. `symbol_short!("lock")`).
+    pub operation: Symbol,
+    /// Measured CPU instructions consumed by this call.
+    pub cpu_used: u64,
+    /// Measured memory bytes consumed by this call.
+    pub mem_used: u64,
+    /// Configured CPU instruction cap (`0` = uncapped).
+    pub cpu_cap: u64,
+    /// Configured memory byte cap (`0` = uncapped).
+    pub mem_cap: u64,
+    /// Ledger timestamp at the time of the check.
+    pub timestamp: u64,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TIMELOCK EVENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Payload for the [`emit_timelock_configured`] event.
+///
+/// Emitted when the admin configures the timelock settings.
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"timelock_cfg"` |
+///
+/// ### Data fields
+/// | Field | Type | Description |
+/// |-------|------|-------------|
+/// | `version` | `u32` | Always [`EVENT_VERSION_V2`] |
+/// | `delay` | `u64` | Configured timelock delay in seconds |
+/// | `is_enabled` | `bool` | Whether timelock is enabled |
+/// | `configured_by` | `Address` | Admin who configured the timelock |
+/// | `timestamp` | `u64` | Ledger time of configuration |
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TimelockConfigured {
+    pub version: u32,
+    pub delay: u64,
+    pub is_enabled: bool,
+    pub configured_by: Address,
+    pub timestamp: u64,
+}
+
+/// Emit [`TimelockConfigured`].
+pub fn emit_timelock_configured(env: &Env, event: TimelockConfigured) {
+    let topics = (symbol_short!("tmlk_cfg"),);
+    env.events().publish(topics, event);
+}
+
+/// Payload for the [`emit_admin_action_proposed`] event.
+///
+/// Emitted when an admin proposes a delayed action.
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"act_prop"` |
+/// | 1 | `action_id: u64` |
+///
+/// ### Data fields
+/// | Field | Type | Description |
+/// |-------|------|-------------|
+/// | `version` | `u32` | Always [`EVENT_VERSION_V2`] |
+/// | `action_type` | `ActionType` | Type of admin action |
+/// | `execute_after` | `u64` | Timestamp when action becomes executable |
+/// | `proposed_by` | `Address` | Admin who proposed the action |
+/// | `timestamp` | `u64` | Ledger time of proposal |
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminActionProposed {
+    pub version: u32,
+    pub action_type: crate::ActionType,
+    pub execute_after: u64,
+    pub proposed_by: Address,
+    pub timestamp: u64,
+}
+
+/// Emit [`AdminActionProposed`].
+pub fn emit_admin_action_proposed(env: &Env, event: AdminActionProposed) {
+    let topics = (symbol_short!("act_prop"),);
+    env.events().publish(topics, event);
+}
+
+/// Payload for the [`emit_admin_action_executed`] event.
+///
+/// Emitted when a proposed admin action is executed.
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"act_exec"` |
+/// | 1 | `action_id: u64` |
+///
+/// ### Data fields
+/// | Field | Type | Description |
+/// |-------|------|-------------|
+/// | `version` | `u32` | Always [`EVENT_VERSION_V2`] |
+/// | `action_type` | `ActionType` | Type of admin action |
+/// | `executed_by` | `Address` | Address that executed the action |
+/// | `executed_at` | `u64` | Ledger time of execution |
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminActionExecuted {
+    pub version: u32,
+    pub action_type: crate::ActionType,
+    pub executed_by: Address,
+    pub executed_at: u64,
+}
+
+/// Emit [`AdminActionExecuted`].
+pub fn emit_admin_action_executed(env: &Env, event: AdminActionExecuted) {
+    let topics = (symbol_short!("act_exec"),);
+    env.events().publish(topics, event);
+}
+
+/// Payload for the [`emit_admin_action_cancelled`] event.
+///
+/// Emitted when an admin cancels a pending action.
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"act_cncl"` |
+/// | 1 | `action_id: u64` |
+///
+/// ### Data fields
+/// | Field | Type | Description |
+/// |-------|------|-------------|
+/// | `version` | `u32` | Always [`EVENT_VERSION_V2`] |
+/// | `action_type` | `ActionType` | Type of admin action |
+/// | `cancelled_by` | `Address` | Admin who cancelled the action |
+/// | `cancelled_at` | `u64` | Ledger time of cancellation |
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminActionCancelled {
+    pub version: u32,
+    pub action_type: crate::ActionType,
+    pub cancelled_by: Address,
+    pub cancelled_at: u64,
+}
+
+/// Emit [`AdminActionCancelled`].
+pub fn emit_admin_action_cancelled(env: &Env, event: AdminActionCancelled) {
+    let topics = (symbol_short!("act_cncl"),);
     env.events().publish(topics, event);
 }
