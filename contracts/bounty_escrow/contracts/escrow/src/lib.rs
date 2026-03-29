@@ -11,11 +11,11 @@ pub mod audit_trail;
 #[cfg(feature = "legacy-tests")]
 mod test_boundary_edge_cases;
 #[cfg(feature = "legacy-tests")]
-mod test_event_schema;
-#[cfg(feature = "legacy-tests")]
 mod test_cross_contract_interface;
 #[cfg(feature = "legacy-tests")]
 mod test_deterministic_randomness;
+#[cfg(feature = "legacy-tests")]
+mod test_event_schema;
 #[cfg(feature = "legacy-tests")]
 mod test_multi_region_treasury;
 #[cfg(feature = "legacy-tests")]
@@ -1473,7 +1473,8 @@ impl BountyEscrowContract {
             );
             events::emit_fee_collected(
                 env,
-                events::FeeCollected { version: events::EVENT_VERSION_V2,
+                events::FeeCollected {
+                    version: events::EVENT_VERSION_V2,
                     operation_type: operation_type.clone(),
                     amount: fee_amount,
                     fee_rate,
@@ -1500,7 +1501,8 @@ impl BountyEscrowContract {
             );
             events::emit_fee_collected(
                 env,
-                events::FeeCollected { version: events::EVENT_VERSION_V2,
+                events::FeeCollected {
+                    version: events::EVENT_VERSION_V2,
                     operation_type: operation_type.clone(),
                     amount: fee_amount,
                     fee_rate,
@@ -1536,7 +1538,8 @@ impl BountyEscrowContract {
                 );
                 events::emit_fee_collected(
                     env,
-                    events::FeeCollected { version: events::EVENT_VERSION_V2,
+                    events::FeeCollected {
+                        version: events::EVENT_VERSION_V2,
                         operation_type: operation_type.clone(),
                         amount: share,
                         fee_rate,
@@ -1618,7 +1621,8 @@ impl BountyEscrowContract {
 
         events::emit_fee_config_updated(
             &env,
-            events::FeeConfigUpdated { version: events::EVENT_VERSION_V2,
+            events::FeeConfigUpdated {
+                version: events::EVENT_VERSION_V2,
                 lock_fee_rate: fee_config.lock_fee_rate,
                 release_fee_rate: fee_config.release_fee_rate,
                 lock_fixed_fee: fee_config.lock_fixed_fee,
@@ -1805,7 +1809,8 @@ impl BountyEscrowContract {
             token_client.transfer(&contract_address, &target, &balance);
             events::emit_emergency_withdraw(
                 &env,
-                events::EmergencyWithdrawEvent { version: events::EVENT_VERSION_V2,
+                events::EmergencyWithdrawEvent {
+                    version: events::EVENT_VERSION_V2,
                     admin,
                     recipient: target,
                     amount: balance,
@@ -2548,7 +2553,8 @@ impl BountyEscrowContract {
 
         events::emit_fee_config_updated(
             &env,
-            events::FeeConfigUpdated { version: events::EVENT_VERSION_V2,
+            events::FeeConfigUpdated {
+                version: events::EVENT_VERSION_V2,
                 lock_fee_rate: fee_config.lock_fee_rate,
                 release_fee_rate: fee_config.release_fee_rate,
                 lock_fixed_fee: fee_config.lock_fixed_fee,
@@ -3236,7 +3242,8 @@ impl BountyEscrowContract {
 
         events::emit_approval_added(
             &env,
-            events::ApprovalAdded { version: events::EVENT_VERSION_V2,
+            events::ApprovalAdded {
+                version: events::EVENT_VERSION_V2,
                 bounty_id,
                 contributor: contributor.clone(),
                 approver,
@@ -5309,7 +5316,8 @@ impl BountyEscrowContract {
 
             emit_batch_funds_locked(
                 &env,
-                BatchFundsLocked { version: EVENT_VERSION_V2,
+                BatchFundsLocked {
+                    version: EVENT_VERSION_V2,
                     count: locked_count,
                     total_amount: ordered_items
                         .iter()
@@ -5508,7 +5516,8 @@ impl BountyEscrowContract {
             // Emit batch event
             emit_batch_funds_released(
                 &env,
-                BatchFundsReleased { version: EVENT_VERSION_V2,
+                BatchFundsReleased {
+                    version: EVENT_VERSION_V2,
                     count: released_count,
                     total_amount,
                     timestamp,
