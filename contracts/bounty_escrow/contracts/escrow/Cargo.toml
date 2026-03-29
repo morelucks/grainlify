@@ -10,6 +10,7 @@ doctest = false
 
 [features]
 default = []
+strict-mode = ["grainlify-core/strict-mode"]
 metadata_tagging = []
 legacy-tests = []
 testutils = []

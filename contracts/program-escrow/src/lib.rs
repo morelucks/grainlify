@@ -144,6 +144,8 @@ use soroban_sdk::{
     String, Symbol, Vec,
 };
 
+use grainlify_core::strict_mode;
+
 mod metadata;
 pub use metadata::*;
 
@@ -1192,6 +1194,18 @@ impl ProgramEscrowContract {
             },
         );
 
+        // Strict mode: verify post-init balance consistency
+        strict_mode::strict_assert_balance_sane(
+            program_data.total_funds,
+            program_data.remaining_balance,
+            "init_program",
+        );
+        strict_mode::strict_assert_eq(
+            program_data.total_funds,
+            program_data.remaining_balance,
+            "init_program: total_funds must equal remaining_balance after init",
+        );
+
         program_data
     }
 
@@ -1715,6 +1729,13 @@ impl ProgramEscrowContract {
         program_data.total_funds = crate::token_math::safe_add(program_data.total_funds, net_amount);
 
         program_data.remaining_balance = crate::token_math::safe_add(program_data.remaining_balance, net_amount);
+
+        // Strict mode: verify balance invariants after update
+        strict_mode::strict_assert_balance_sane(
+            program_data.total_funds,
+            program_data.remaining_balance,
+            "lock_program_funds",
+        );
 
         // Store updated data
         env.storage().instance().set(&PROGRAM_DATA, &program_data);
@@ -2672,6 +2693,13 @@ impl ProgramEscrowContract {
         updated_data.remaining_balance -= total_payout;
         updated_data.payout_history = updated_history;
 
+        // Strict mode: verify balance invariants after batch payout
+        strict_mode::strict_assert_balance_sane(
+            updated_data.total_funds,
+            updated_data.remaining_balance,
+            "batch_payout",
+        );
+
         // Store updated data
         env.storage().instance().set(&PROGRAM_DATA, &updated_data);
 
@@ -2841,6 +2869,13 @@ impl ProgramEscrowContract {
         let mut updated_data = program_data.clone();
         updated_data.remaining_balance -= amount;
         updated_data.payout_history = updated_history;
+
+        // Strict mode: verify balance invariants after payout
+        strict_mode::strict_assert_balance_sane(
+            updated_data.total_funds,
+            updated_data.remaining_balance,
+            "single_payout",
+        );
 
         env.storage().instance().set(&PROGRAM_DATA, &updated_data);
 
