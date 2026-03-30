@@ -247,6 +247,20 @@
                     },
                     {
                       "key": {
+                        "symbol": "delegate"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "delegate_permissions"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "depositor"
                       },
                       "val": {
@@ -272,6 +286,12 @@
                       "val": {
                         "vec": []
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "metadata"
+                      },
+                      "val": "void"
                     },
                     {
                       "key": {

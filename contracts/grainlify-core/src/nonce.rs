@@ -25,6 +25,7 @@ pub enum NonceError {
 
 /// Persistent storage keys used for nonce tracking.
 #[contracttype]
+#[derive(Clone)]
 pub enum NonceKey {
     /// Signer-wide nonce shared by all flows using global nonce validation.
     Signer(Address),

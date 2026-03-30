@@ -266,6 +266,7 @@ This design allows off-chain systems to:
 - All amounts must be positive
 - Payout history is immutable and auditable
 - Token transfers use the Soroban token contract standard
+- **Token Math Safety**: All token arithmetic (addition, subtraction, multiplication) is centralized in `token_math.rs` and utilizes checked mathematical operations arrayed with explicit panic messages to securely prevent overflow and underflow vulnerabilities.
 - `token_address` must be a contract address (not an account address)
 - Shared asset id rules are documented in `contracts/ASSET_ID_STRATEGY.md`
 
@@ -305,6 +306,69 @@ The backend should:
 3. Query `get_nonce()` and include nonce when calling payout entrypoints
 4. Call `batch_payout()`/`single_payout()` after computing final scores and verifying KYC
 5. Track payout history for audit purposes
+
+## Error Codes
+
+The contract uses a canonical error enum for all public entrypoints. Clients should parse these error codes to handle failures consistently.
+
+### Error Code Table
+
+| Code | Error | Description |
+|------|-------|-------------|
+| 1 | `AlreadyInitialized` | Program has already been initialized |
+| 2 | `NotInitialized` | Program has not been initialized |
+| 3 | `Unauthorized` | Caller is not authorized for this operation |
+| 4 | `InsufficientBalance` | Insufficient balance for the requested operation |
+| 5 | `InvalidAmount` | Amount must be greater than zero |
+| 6 | `InvalidRecipient` | Recipient address is invalid |
+| 7 | `InvalidNonce` | Nonce does not match expected value |
+| 8 | `BatchTooLarge` | Batch size exceeds maximum allowed |
+| 9 | `EmptyBatch` | Batch cannot be empty |
+| 10 | `MismatchedLengths` | Recipients and amounts vectors must have same length |
+| 11 | `ReleaseScheduleNotFound` | Release schedule does not exist |
+| 12 | `ReleaseNotDue` | Release is not yet due for execution |
+| 13 | `ReleaseAlreadyExecuted` | Release has already been executed |
+| 14 | `DisputeAlreadyOpen` | A dispute is already open |
+| 15 | `NoActiveDispute` | No active dispute to resolve |
+| 16 | `PayoutsBlocked` | Payouts are blocked due to an open dispute |
+| 17 | `LockPaused` | Lock operations are paused |
+| 18 | `ReleasePaused` | Release operations are paused |
+| 19 | `RefundPaused` | Refund operations are paused |
+| 20 | `CircuitBreakerOpen` | Circuit breaker is open, operations temporarily blocked |
+| 21 | `ThresholdExceeded` | Operation would exceed threshold limits |
+| 22 | `InvalidTimestamp` | Release timestamp must be in the future |
+| 23 | `DuplicateRecipient` | Duplicate recipient in batch payout |
+
+### Error Handling Best Practices
+
+1. **Parse Error Codes**: Always parse the error code from the contract response
+2. **User-Friendly Messages**: Map error codes to user-friendly messages in your UI
+3. **Retry Logic**: Implement retry logic for transient errors (e.g., circuit breaker open)
+4. **Logging**: Log error codes for debugging and monitoring
+5. **Validation**: Validate inputs client-side before submitting transactions
+
+### Example Error Handling
+
+```rust
+use soroban_sdk::Error;
+
+match contract.try_batch_payout(&recipients, &amounts, &nonce) {
+    Ok(data) => {
+        // Success
+    }
+    Err(Error::ContractError(code)) => {
+        match code {
+            4 => println!("Insufficient balance for payout"),
+            8 => println!("Batch too large, reduce number of recipients"),
+            16 => println!("Payouts blocked due to open dispute"),
+            _ => println!("Error code: {}", code),
+        }
+    }
+    Err(e) => {
+        println!("Transaction failed: {:?}", e);
+    }
+}
+```
 
 ## Example
 

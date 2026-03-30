@@ -83,6 +83,9 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
+                  "bytes": "6c5c9eed04b49d2b3851ba0c679b395760598f21f90e52b3de8cd58ac952b5eb"
+                },
+                {
                   "bool": true
                 }
               ]
@@ -250,7 +253,7 @@
                 },
                 "durability": "persistent",
                 "val": {
-                  "bool": true
+                  "bytes": "6c5c9eed04b49d2b3851ba0c679b395760598f21f90e52b3de8cd58ac952b5eb"
                 }
               }
             },
@@ -314,6 +317,20 @@
                     },
                     {
                       "key": {
+                        "symbol": "delegate"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "delegate_permissions"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "depositor"
                       },
                       "val": {
@@ -339,6 +356,12 @@
                       "val": {
                         "vec": []
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "metadata"
+                      },
+                      "val": "void"
                     },
                     {
                       "key": {

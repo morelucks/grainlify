@@ -11,15 +11,16 @@ crate-type = ["rlib", "cdylib"]
 [features]
 default = ["contract"]
 contract = []
+strict-mode = []
 upgrade_rollback_tests = []
 governance_contract_tests = []
 wasm_tests = []
 
 [dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "=21.7.7"
 
 [dev-dependencies]
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
 
 [profile.release]
 overflow-checks = true

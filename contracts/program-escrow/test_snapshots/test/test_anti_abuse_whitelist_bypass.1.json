@@ -26,6 +26,21 @@
     [],
     [
       [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "publish_program",
+              "args": []
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
         {
           "function": {
@@ -716,6 +731,223 @@
         {
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "TwaBucket"
+                },
+                {
+                  "u64": 0
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "TwaBucket"
+                    },
+                    {
+                      "u64": 0
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "lock_count"
+                      },
+                      "val": {
+                        "u64": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "period_id"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "settlement_count"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "sum_lock_amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 100000000000
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "sum_settlement_time"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "TwaBucket"
+                },
+                {
+                  "u64": 13
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "TwaBucket"
+                    },
+                    {
+                      "u64": 13
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "lock_count"
+                      },
+                      "val": {
+                        "u64": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "period_id"
+                      },
+                      "val": {
+                        "u64": 277
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "settlement_count"
+                      },
+                      "val": {
+                        "u64": 15
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "sum_lock_amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 0
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "sum_settlement_time"
+                      },
+                      "val": {
+                        "u64": 15000915
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "TwaLastLock"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "TwaLastLock"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": 0
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
             "key": "ledger_key_contract_instance",
             "durability": "persistent"
           }
@@ -754,7 +986,7 @@
                                 "symbol": "fee_recipient"
                               },
                               "val": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                               }
                             },
                             {
@@ -770,7 +1002,29 @@
                             },
                             {
                               "key": {
+                                "symbol": "lock_fixed_fee"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 0
+                                }
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "payout_fee_rate"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 0
+                                }
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "payout_fixed_fee"
                               },
                               "val": {
                                 "i128": {
@@ -798,10 +1052,38 @@
                           "map": [
                             {
                               "key": {
+                                "symbol": "archived"
+                              },
+                              "val": {
+                                "bool": false
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "archived_at"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
                                 "symbol": "authorized_payout_key"
                               },
                               "val": {
                                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "delegate"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "delegate_permissions"
+                              },
+                              "val": {
+                                "u32": 0
                               }
                             },
                             {
@@ -813,6 +1095,61 @@
                                   "hi": 0,
                                   "lo": 0
                                 }
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata"
+                              },
+                              "val": {
+                                "map": [
+                                  {
+                                    "key": {
+                                      "symbol": "custom_fields"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "ecosystem"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "end_date"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "program_name"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "program_type"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "start_date"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  }
+                                ]
                               }
                             },
                             {
@@ -1324,6 +1661,18 @@
                             },
                             {
                               "key": {
+                                "symbol": "status"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "symbol": "Active"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "token_address"
                               },
                               "val": {
@@ -1340,6 +1689,18 @@
                                   "lo": 100000000000
                                 }
                               }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ProgReg"
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "string": "hack-2026"
                             }
                           ]
                         }
@@ -1477,10 +1838,38 @@
                           "map": [
                             {
                               "key": {
+                                "symbol": "archived"
+                              },
+                              "val": {
+                                "bool": false
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "archived_at"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
                                 "symbol": "authorized_payout_key"
                               },
                               "val": {
                                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "delegate"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "delegate_permissions"
+                              },
+                              "val": {
+                                "u32": 0
                               }
                             },
                             {
@@ -1492,6 +1881,61 @@
                                   "hi": 0,
                                   "lo": 0
                                 }
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata"
+                              },
+                              "val": {
+                                "map": [
+                                  {
+                                    "key": {
+                                      "symbol": "custom_fields"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "ecosystem"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "end_date"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "program_name"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "program_type"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "start_date"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  }
+                                ]
                               }
                             },
                             {
@@ -1537,6 +1981,18 @@
                             },
                             {
                               "key": {
+                                "symbol": "status"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "symbol": "Draft"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "token_address"
                               },
                               "val": {
@@ -1571,6 +2027,18 @@
                         "val": {
                           "vec": []
                         }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "ReadOnlyMode"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bool": false
+                        }
                       }
                     ]
                   }
@@ -1604,39 +2072,6 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 115220454072064130
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 1033654523790656264
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 1033654523790656264
                   }
                 },
                 "durability": "temporary",
@@ -1769,6 +2204,39 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 2307661404550649928
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 2578412842719982537
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 2578412842719982537
                   }
                 },
                 "durability": "temporary",
@@ -1934,6 +2402,39 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 4837995959683129791
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 5541220902715666415
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 5541220902715666415
                   }
                 },
                 "durability": "temporary",
@@ -2149,7 +2650,7 @@
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
             "key": {
               "ledger_key_nonce": {
-                "nonce": 5541220902715666415
+                "nonce": 1033654523790656264
               }
             },
             "durability": "temporary"
@@ -2164,7 +2665,7 @@
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
                 "key": {
                   "ledger_key_nonce": {
-                    "nonce": 5541220902715666415
+                    "nonce": 1033654523790656264
                   }
                 },
                 "durability": "temporary",
@@ -2702,10 +3203,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -2717,6 +3246,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -2758,6 +3342,240 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Draft"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "token_address"
+                  },
+                  "val": {
+                    "address": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_funds"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "publish_program"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "publish_program"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "authorized_payout_key"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "initial_liquidity"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 0
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "payout_history"
+                  },
+                  "val": {
+                    "vec": []
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "program_id"
+                  },
+                  "val": {
+                    "string": "hack-2026"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "reference_hash"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "remaining_balance"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 0
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "risk_flags"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -2982,10 +3800,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -2997,6 +3843,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -3038,6 +3939,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -3453,10 +4366,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -3468,6 +4409,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -3545,6 +4541,18 @@
                 },
                 {
                   "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "token_address"
                   },
                   "val": {
@@ -3783,10 +4791,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -3798,6 +4834,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -3902,6 +4993,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -4144,10 +5247,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -4159,6 +5290,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -4298,6 +5484,18 @@
                 },
                 {
                   "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "token_address"
                   },
                   "val": {
@@ -4536,10 +5734,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -4551,6 +5777,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -4717,6 +5998,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -4959,10 +6252,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -4974,6 +6295,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -5175,6 +6551,18 @@
                 },
                 {
                   "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "token_address"
                   },
                   "val": {
@@ -5413,10 +6801,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -5428,6 +6844,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -5656,6 +7127,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -5898,10 +7381,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -5913,6 +7424,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -6176,6 +7742,18 @@
                 },
                 {
                   "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "token_address"
                   },
                   "val": {
@@ -6414,10 +7992,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -6429,6 +8035,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -6719,6 +8380,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -6961,10 +8634,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -6976,6 +8677,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -7301,6 +9057,18 @@
                 },
                 {
                   "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "token_address"
                   },
                   "val": {
@@ -7539,10 +9307,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -7554,6 +9350,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -7906,6 +9757,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -8148,10 +10011,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -8163,6 +10054,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -8550,6 +10496,18 @@
                 },
                 {
                   "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "token_address"
                   },
                   "val": {
@@ -8788,10 +10746,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -8803,6 +10789,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -9217,6 +11258,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -9459,10 +11512,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -9474,6 +11555,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -9923,6 +12059,18 @@
                 },
                 {
                   "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "token_address"
                   },
                   "val": {
@@ -10161,10 +12309,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -10176,6 +12352,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -10656,6 +12887,18 @@
                 },
                 {
                   "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "token_address"
                   },
                   "val": {
@@ -10894,10 +13137,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -10909,6 +13180,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -11416,6 +13742,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
@@ -11487,10 +13825,38 @@
               "map": [
                 {
                   "key": {
+                    "symbol": "archived"
+                  },
+                  "val": {
+                    "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_at"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "authorized_payout_key"
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "delegate"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "delegate_permissions"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -11502,6 +13868,61 @@
                       "hi": 0,
                       "lo": 0
                     }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "metadata"
+                  },
+                  "val": {
+                    "map": [
+                      {
+                        "key": {
+                          "symbol": "custom_fields"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "ecosystem"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "end_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_name"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "program_type"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "start_date"
+                        },
+                        "val": "void"
+                      },
+                      {
+                        "key": {
+                          "symbol": "tags"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      }
+                    ]
                   }
                 },
                 {
@@ -12009,6 +14430,18 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "status"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "Active"
+                      }
+                    ]
                   }
                 },
                 {
