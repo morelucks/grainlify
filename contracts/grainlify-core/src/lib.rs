@@ -19,6 +19,7 @@ pub mod errors;
 mod governance;
 pub mod nonce;
 pub mod pseudo_randomness;
+pub mod strict_mode;
 
 pub use governance::{GovernanceConfig, Proposal, ProposalStatus, Vote, VoteType, VotingScheme};
 
@@ -494,12 +495,25 @@ mod monitoring {
     }
 
     pub fn verify_invariants(env: &Env) -> bool {
-        check_invariants(env).healthy
+        let report = check_invariants(env);
+        #[cfg(feature = "strict-mode")]
+        {
+            if !report.healthy {
+                use soroban_sdk::symbol_short;
+                env.events().publish(
+                    (symbol_short!("strict"), symbol_short!("inv_fail")),
+                    report.violation_count,
+                );
+            }
+        }
+        report.healthy
     }
 }
 
 #[cfg(test)]
 mod test_core_monitoring;
+#[cfg(test)]
+mod test_strict_mode;
 #[cfg(test)]
 mod test_pseudo_randomness;
 #[cfg(test)]
@@ -975,6 +989,17 @@ impl GrainlifyContract {
         // Track performance
         let duration = env.ledger().timestamp().saturating_sub(start);
         monitoring::emit_performance(&env, symbol_short!("init"), duration);
+
+        // Strict mode: verify post-initialization invariants
+        strict_mode::strict_assert(
+            contract_is_initialized(&env),
+            "Strict mode: contract not initialized after init_admin",
+        );
+        strict_mode::strict_emit(
+            &env,
+            symbol_short!("init"),
+            symbol_short!("ok"),
+        );
     }
 
     /// Initializes the contract with governance-augmented setup.
@@ -1407,6 +1432,21 @@ impl GrainlifyContract {
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
         let start = env.ledger().timestamp();
 
+        // Strict mode: verify invariants before upgrade
+        #[cfg(feature = "strict-mode")]
+        {
+            let report = monitoring::check_invariants(&env);
+            strict_mode::strict_assert(
+                report.healthy,
+                "Strict mode: contract invariants unhealthy before upgrade",
+            );
+            strict_mode::strict_emit(
+                &env,
+                symbol_short!("upgrade"),
+                symbol_short!("pre_chk"),
+            );
+        }
+
         // Verify admin is set (contract initialized).
         // Panics with ContractError::NotInitialized if admin key is absent.
         let admin: Address = env
@@ -1493,6 +1533,14 @@ impl GrainlifyContract {
     /// Very Low - Single storage read
     pub fn get_version(env: Env) -> u32 {
         env.storage().instance().get(&DataKey::Version).unwrap_or(0)
+    }
+
+    /// Returns `true` when this contract was compiled with `strict-mode` enabled.
+    ///
+    /// Operators and deployment scripts can call this after deployment to verify
+    /// that dev/staging builds have strict checks active and mainnet builds do not.
+    pub fn is_strict_mode(_env: Env) -> bool {
+        strict_mode::is_enabled()
     }
 
     /// Returns the semantic version string decoded from the stored numeric encoding.
