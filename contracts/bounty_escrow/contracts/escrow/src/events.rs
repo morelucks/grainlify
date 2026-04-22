@@ -1471,3 +1471,22 @@ pub fn emit_admin_transfer_accepted(env: &Env, event: AdminTransferAccepted) {
     let topics = (symbol_short!("adm_acc"),);
     env.events().publish(topics, event);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BATCH SIZE GOVERNANCE EVENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaxBatchSizeUpdated {
+    pub version: u32,
+    pub admin: Address,
+    pub old_size: u32,
+    pub new_size: u32,
+    pub timestamp: u64,
+}
+
+pub fn emit_max_batch_size_updated(env: &Env, event: MaxBatchSizeUpdated) {
+    let topics = (symbol_short!("b_cap_up"),);
+    env.events().publish(topics, event);
+}

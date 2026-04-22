@@ -647,3 +647,66 @@ fn test_admin_timelock_enforces_minimum() {
     // Try to set timelock to 1 second (minimum is 300)
     setup.escrow.set_admin_timelock(&1);
 }
+
+// ============================================================================
+// BATCH SIZE GOVERNANCE TESTS
+// ============================================================================
+
+#[test]
+fn test_batch_size_governance_lifecycle() {
+    let setup = TestSetup::new();
+    
+    // 1. Verify default batch size is 20
+    assert_eq!(setup.escrow.get_max_batch_size(), 20);
+
+    // 2. Admin updates the batch size to 50
+    setup.escrow.set_max_batch_size(&50);
+    assert_eq!(setup.escrow.get_max_batch_size(), 50);
+    
+    // 3. Admin updates the batch size down to 5
+    setup.escrow.set_max_batch_size(&5);
+    assert_eq!(setup.escrow.get_max_batch_size(), 5);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")] // InvalidAmount
+fn test_batch_size_enforces_zero_bound() {
+    let setup = TestSetup::new();
+    // Cannot set batch size to 0
+    setup.escrow.set_max_batch_size(&0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")] // InvalidAmount
+fn test_batch_size_enforces_hard_limit() {
+    let setup = TestSetup::new();
+    // Cannot set batch size above HARD_LIMIT_BATCH_SIZE (100)
+    setup.escrow.set_max_batch_size(&101);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #10)")] // InvalidBatchSize
+fn test_batch_lock_fails_when_exceeding_dynamic_cap() {
+    let setup = TestSetup::new();
+    
+    // Set cap to 1
+    setup.escrow.set_max_batch_size(&1);
+    
+    let deadline = setup.env.ledger().timestamp() + 1000;
+    let mut items = soroban_sdk::Vec::new(&setup.env);
+    items.push_back(LockFundsItem {
+        bounty_id: 1,
+        depositor: setup.depositor.clone(),
+        amount: 100,
+        deadline,
+    });
+    items.push_back(LockFundsItem {
+        bounty_id: 2,
+        depositor: setup.depositor.clone(),
+        amount: 100,
+        deadline,
+    });
+    
+    // Attempting to batch lock 2 items when the cap is 1 should panic
+    setup.escrow.batch_lock_funds(&items);
+}

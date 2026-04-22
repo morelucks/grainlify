@@ -5055,7 +5055,8 @@ impl BountyEscrowContract {
             if batch_size == 0 {
                 return Err(Error::InvalidBatchSize);
             }
-            if batch_size > MAX_BATCH_SIZE {
+            let max_batch_size = Self::get_max_batch_size(env.clone());
+            if batch_size as u32 > max_batch_size {
                 return Err(Error::InvalidBatchSize);
             }
 
@@ -5282,7 +5283,8 @@ impl BountyEscrowContract {
             if batch_size == 0 {
                 return Err(Error::InvalidBatchSize);
             }
-            if batch_size > MAX_BATCH_SIZE {
+            let max_batch_size = Self::get_max_batch_size(env.clone());
+            if batch_size as u32 > max_batch_size {
                 return Err(Error::InvalidBatchSize);
             }
 
@@ -5635,6 +5637,52 @@ impl BountyEscrowContract {
             .instance()
             .get(&symbol_short!("adm_tlock"))
             .unwrap_or(DEFAULT_ADMIN_TIMELOCK)
+    }
+
+    // ============================================================================
+    // BATCH SIZE GOVERNANCE
+    // ============================================================================
+
+    const DEFAULT_MAX_BATCH_SIZE: u32 = 20;
+    const HARD_LIMIT_BATCH_SIZE: u32 = 100; // Prevents Soroban instruction/memory limit exploits
+
+    /// Updates the maximum allowed items in a single batch operation.
+    ///
+    /// # Access Control
+    /// Admin-only.
+    pub fn set_max_batch_size(env: Env, new_size: u32) -> Result<(), Error> {
+        let admin = rbac::require_admin(&env);
+        admin.require_auth();
+
+        if new_size == 0 || new_size > Self::HARD_LIMIT_BATCH_SIZE {
+            return Err(Error::InvalidAmount);
+        }
+
+        let old_size = Self::get_max_batch_size(env.clone());
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("max_batch"), &new_size);
+
+        events::emit_max_batch_size_updated(
+            &env,
+            events::MaxBatchSizeUpdated {
+                version: events::EVENT_VERSION_V2,
+                admin,
+                old_size,
+                new_size,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+        Ok(())
+    }
+
+    /// View: Gets the current configured maximum batch size.
+    pub fn get_max_batch_size(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("max_batch"))
+            .unwrap_or(Self::DEFAULT_MAX_BATCH_SIZE)
     }
 }
 impl traits::EscrowInterface for BountyEscrowContract {

@@ -548,6 +548,15 @@
         "authorization": "any",
         "pausable": false,
         "gas_estimate": "low"
+      },
+      {
+        "name": "get_max_batch_size",
+        "description": "View current maximum batch size",
+        "parameters": [],
+        "returns": { "type": "u32", "description": "Maximum allowed items per batch" },
+        "authorization": "any",
+        "pausable": false,
+        "gas_estimate": "low"
       }
     ],
     "admin": [
@@ -813,6 +822,17 @@
         "name": "cancel_admin_transfer",
         "description": "Cancel a pending admin transfer",
         "parameters": [],
+        "returns": { "type": "()", "description": "Empty on success" },
+        "authorization": "admin",
+        "pausable": false,
+        "gas_estimate": "low"
+      },
+      {
+        "name": "set_max_batch_size",
+        "description": "Configure the maximum allowed items in batch operations",
+        "parameters": [
+          { "name": "new_size", "type": "u32", "description": "New maximum batch size" }
+        ],
         "returns": { "type": "()", "description": "Empty on success" },
         "authorization": "admin",
         "pausable": false,
