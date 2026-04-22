@@ -544,6 +544,7 @@ pub enum DataKey {
     ProgramDependencies(String),     // program_id -> Vec<String>
     DependencyStatus(String),        // program_id -> DependencyStatus
     Dispute,                         // DisputeRecord (single active dispute per contract)
+    HistoryPaginationConfig,         // HistoryPaginationConfig
 }
 
 #[contracttype]
@@ -591,6 +592,12 @@ pub struct RateLimitConfig {
     pub window_size: u64,
     pub max_operations: u32,
     pub cooldown_period: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HistoryPaginationConfig {
+    pub max_limit: u32,
 }
 
 #[contracttype]
@@ -756,6 +763,13 @@ pub enum BatchError {
 }
 
 pub const MAX_BATCH_SIZE: u32 = 100;
+pub const DEFAULT_MAX_HISTORY_PAGE_LIMIT: u32 = 200;
+
+fn default_history_pagination_config() -> HistoryPaginationConfig {
+    HistoryPaginationConfig {
+        max_limit: DEFAULT_MAX_HISTORY_PAGE_LIMIT,
+    }
+}
 
 fn vec_contains(values: &Vec<String>, target: &String) -> bool {
     for value in values.iter() {
@@ -879,6 +893,64 @@ pub struct ProgramEscrowContract;
 
 #[contractimpl]
 impl ProgramEscrowContract {
+    fn get_history_pagination_config(env: &Env) -> HistoryPaginationConfig {
+        env.storage()
+            .instance()
+            .get(&DataKey::HistoryPaginationConfig)
+            .unwrap_or_else(default_history_pagination_config)
+    }
+
+    fn ensure_history_pagination_config(env: &Env) {
+        if !env.storage().instance().has(&DataKey::HistoryPaginationConfig) {
+            env.storage().instance().set(
+                &DataKey::HistoryPaginationConfig,
+                &default_history_pagination_config(),
+            );
+        }
+    }
+
+    fn validate_pagination(env: &Env, limit: u32) {
+        if limit == 0 {
+            panic!("Pagination limit must be greater than zero");
+        }
+        let cfg = Self::get_history_pagination_config(env);
+        if limit > cfg.max_limit {
+            panic!("Pagination limit exceeds maximum");
+        }
+    }
+
+    fn paginate_filtered<T, F>(
+        env: &Env,
+        entries: soroban_sdk::Vec<T>,
+        offset: u32,
+        limit: u32,
+        mut predicate: F,
+    ) -> soroban_sdk::Vec<T>
+    where
+        T: Clone,
+        F: FnMut(&T) -> bool,
+    {
+        let mut results = Vec::new(env);
+        let mut count = 0u32;
+        let mut skipped = 0u32;
+
+        for i in 0..entries.len() {
+            if count >= limit {
+                break;
+            }
+            let entry = entries.get(i).unwrap();
+            if predicate(&entry) {
+                if skipped < offset {
+                    skipped += 1;
+                    continue;
+                }
+                results.push_back(entry);
+                count += 1;
+            }
+        }
+        results
+    }
+
     fn order_batch_lock_items(env: &Env, items: &Vec<LockItem>) -> soroban_sdk::Vec<LockItem> {
         let mut ordered: soroban_sdk::Vec<LockItem> = Vec::new(env);
         for item in items.iter() {
@@ -1123,6 +1195,7 @@ impl ProgramEscrowContract {
                 },
             );
         }
+        Self::ensure_history_pagination_config(&env);
 
         env.storage()
             .instance()
@@ -1587,6 +1660,7 @@ impl ProgramEscrowContract {
                 paused_at: 0,
             },
         );
+        Self::ensure_history_pagination_config(&env);
     }
 
     /// Set or rotate admin. If no admin is set, sets initial admin. If admin exists, current admin must authorize and the new address becomes admin.
@@ -3112,31 +3186,15 @@ impl ProgramEscrowContract {
         offset: u32,
         limit: u32,
     ) -> soroban_sdk::Vec<PayoutRecord> {
+        Self::validate_pagination(&env, limit);
         let program_data: ProgramData = env
             .storage()
             .instance()
             .get(&PROGRAM_DATA)
             .unwrap_or_else(|| panic!("Program not initialized"));
-        let history = program_data.payout_history;
-        let mut results = Vec::new(&env);
-        let mut count = 0u32;
-        let mut skipped = 0u32;
-
-        for i in 0..history.len() {
-            if count >= limit {
-                break;
-            }
-            let record = history.get(i).unwrap();
-            if record.recipient == recipient {
-                if skipped < offset {
-                    skipped += 1;
-                    continue;
-                }
-                results.push_back(record);
-                count += 1;
-            }
-        }
-        results
+        Self::paginate_filtered(&env, program_data.payout_history, offset, limit, |record| {
+            record.recipient == recipient
+        })
     }
 
     /// Query payout history by amount range
@@ -3147,31 +3205,18 @@ impl ProgramEscrowContract {
         offset: u32,
         limit: u32,
     ) -> soroban_sdk::Vec<PayoutRecord> {
+        Self::validate_pagination(&env, limit);
+        if min_amount > max_amount {
+            panic!("Invalid amount range");
+        }
         let program_data: ProgramData = env
             .storage()
             .instance()
             .get(&PROGRAM_DATA)
             .unwrap_or_else(|| panic!("Program not initialized"));
-        let history = program_data.payout_history;
-        let mut results = Vec::new(&env);
-        let mut count = 0u32;
-        let mut skipped = 0u32;
-
-        for i in 0..history.len() {
-            if count >= limit {
-                break;
-            }
-            let record = history.get(i).unwrap();
-            if record.amount >= min_amount && record.amount <= max_amount {
-                if skipped < offset {
-                    skipped += 1;
-                    continue;
-                }
-                results.push_back(record);
-                count += 1;
-            }
-        }
-        results
+        Self::paginate_filtered(&env, program_data.payout_history, offset, limit, |record| {
+            record.amount >= min_amount && record.amount <= max_amount
+        })
     }
 
     /// Query payout history by timestamp range
@@ -3182,31 +3227,18 @@ impl ProgramEscrowContract {
         offset: u32,
         limit: u32,
     ) -> soroban_sdk::Vec<PayoutRecord> {
+        Self::validate_pagination(&env, limit);
+        if min_timestamp > max_timestamp {
+            panic!("Invalid timestamp range");
+        }
         let program_data: ProgramData = env
             .storage()
             .instance()
             .get(&PROGRAM_DATA)
             .unwrap_or_else(|| panic!("Program not initialized"));
-        let history = program_data.payout_history;
-        let mut results = Vec::new(&env);
-        let mut count = 0u32;
-        let mut skipped = 0u32;
-
-        for i in 0..history.len() {
-            if count >= limit {
-                break;
-            }
-            let record = history.get(i).unwrap();
-            if record.timestamp >= min_timestamp && record.timestamp <= max_timestamp {
-                if skipped < offset {
-                    skipped += 1;
-                    continue;
-                }
-                results.push_back(record);
-                count += 1;
-            }
-        }
-        results
+        Self::paginate_filtered(&env, program_data.payout_history, offset, limit, |record| {
+            record.timestamp >= min_timestamp && record.timestamp <= max_timestamp
+        })
     }
 
     /// Query release schedules by recipient
@@ -3216,30 +3248,15 @@ impl ProgramEscrowContract {
         offset: u32,
         limit: u32,
     ) -> soroban_sdk::Vec<ProgramReleaseSchedule> {
+        Self::validate_pagination(&env, limit);
         let schedules: soroban_sdk::Vec<ProgramReleaseSchedule> = env
             .storage()
             .instance()
             .get(&SCHEDULES)
             .unwrap_or_else(|| Vec::new(&env));
-        let mut results = Vec::new(&env);
-        let mut count = 0u32;
-        let mut skipped = 0u32;
-
-        for i in 0..schedules.len() {
-            if count >= limit {
-                break;
-            }
-            let schedule = schedules.get(i).unwrap();
-            if schedule.recipient == recipient {
-                if skipped < offset {
-                    skipped += 1;
-                    continue;
-                }
-                results.push_back(schedule);
-                count += 1;
-            }
-        }
-        results
+        Self::paginate_filtered(&env, schedules, offset, limit, |schedule| {
+            schedule.recipient == recipient
+        })
     }
 
     /// Query release schedules by released status
@@ -3249,30 +3266,15 @@ impl ProgramEscrowContract {
         offset: u32,
         limit: u32,
     ) -> soroban_sdk::Vec<ProgramReleaseSchedule> {
+        Self::validate_pagination(&env, limit);
         let schedules: soroban_sdk::Vec<ProgramReleaseSchedule> = env
             .storage()
             .instance()
             .get(&SCHEDULES)
             .unwrap_or_else(|| Vec::new(&env));
-        let mut results = Vec::new(&env);
-        let mut count = 0u32;
-        let mut skipped = 0u32;
-
-        for i in 0..schedules.len() {
-            if count >= limit {
-                break;
-            }
-            let schedule = schedules.get(i).unwrap();
-            if schedule.released == released {
-                if skipped < offset {
-                    skipped += 1;
-                    continue;
-                }
-                results.push_back(schedule);
-                count += 1;
-            }
-        }
-        results
+        Self::paginate_filtered(&env, schedules, offset, limit, |schedule| {
+            schedule.released == released
+        })
     }
 
     /// Query release history with filtering and pagination
@@ -3282,30 +3284,15 @@ impl ProgramEscrowContract {
         offset: u32,
         limit: u32,
     ) -> soroban_sdk::Vec<ProgramReleaseHistory> {
+        Self::validate_pagination(&env, limit);
         let history: soroban_sdk::Vec<ProgramReleaseHistory> = env
             .storage()
             .instance()
             .get(&RELEASE_HISTORY)
             .unwrap_or_else(|| Vec::new(&env));
-        let mut results = Vec::new(&env);
-        let mut count = 0u32;
-        let mut skipped = 0u32;
-
-        for i in 0..history.len() {
-            if count >= limit {
-                break;
-            }
-            let record = history.get(i).unwrap();
-            if record.recipient == recipient {
-                if skipped < offset {
-                    skipped += 1;
-                    continue;
-                }
-                results.push_back(record);
-                count += 1;
-            }
-        }
-        results
+        Self::paginate_filtered(&env, history, offset, limit, |record| {
+            record.recipient == recipient
+        })
     }
 
     /// Get aggregate statistics for the program
@@ -3353,31 +3340,15 @@ impl ProgramEscrowContract {
         offset: u32,
         limit: u32,
     ) -> soroban_sdk::Vec<PayoutRecord> {
+        Self::validate_pagination(&env, limit);
         let program_data: ProgramData = env
             .storage()
             .instance()
             .get(&PROGRAM_DATA)
             .unwrap_or_else(|| panic!("Program not initialized"));
-        let history = program_data.payout_history;
-        let mut results = Vec::new(&env);
-        let mut count = 0u32;
-        let mut skipped = 0u32;
-
-        for i in 0..history.len() {
-            if count >= limit {
-                break;
-            }
-            let record = history.get(i).unwrap();
-            if record.recipient == recipient {
-                if skipped < offset {
-                    skipped += 1;
-                    continue;
-                }
-                results.push_back(record);
-                count += 1;
-            }
-        }
-        results
+        Self::paginate_filtered(&env, program_data.payout_history, offset, limit, |record| {
+            record.recipient == recipient
+        })
     }
 
     /// Get pending schedules (not yet released)

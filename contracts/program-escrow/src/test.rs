@@ -2185,6 +2185,43 @@ fn test_query_payouts_pagination_offset_and_limit() {
 }
 
 #[test]
+#[should_panic(expected = "Pagination limit must be greater than zero")]
+fn test_query_payouts_pagination_limit_zero_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 100_000);
+    let r1 = Address::generate(&env);
+    client.single_payout(&r1, &10_000);
+    let _ = client.query_payouts_by_recipient(&r1, &0, &0);
+}
+
+#[test]
+#[should_panic(expected = "Pagination limit exceeds maximum")]
+fn test_query_payouts_pagination_limit_above_max_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 100_000);
+    let r1 = Address::generate(&env);
+    client.single_payout(&r1, &10_000);
+    let _ = client.query_payouts_by_recipient(&r1, &0, &201);
+}
+
+#[test]
+#[should_panic(expected = "Invalid amount range")]
+fn test_query_payouts_by_amount_invalid_range_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 100_000);
+    let _ = client.query_payouts_by_amount(&1000, &100, &0, &10);
+}
+
+#[test]
+#[should_panic(expected = "Invalid timestamp range")]
+fn test_query_payouts_by_timestamp_invalid_range_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 100_000);
+    let now = env.ledger().timestamp();
+    let _ = client.query_payouts_by_timestamp(&(now + 10), &now, &0, &10);
+}
+
+#[test]
 fn test_query_schedules_by_status_pending_vs_released() {
     let env = Env::default();
     let (client, _admin, _token, _token_admin) = setup_program(&env, 200_000);

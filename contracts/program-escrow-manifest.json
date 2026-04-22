@@ -37,6 +37,15 @@
           "Added explicit spend-threshold configuration and retrieval entrypoints",
           "Reused per-program persistent config storage for upgrade-safe threshold state"
         ]
+      },
+      {
+        "version": "2.2.0",
+        "release_date": "2026-04-22",
+        "changes": [
+          "Hardened history pagination with deterministic limit validation and explicit range errors",
+          "Centralized pagination behavior across payout, schedule, and release history queries",
+          "Added upgrade-safe pagination config storage with backward-compatible defaults"
+        ]
       }
     ]
   },
@@ -765,6 +774,12 @@
         "data_structure": "PauseFlags"
       },
       {
+        "name": "DataKey::HistoryPaginationConfig",
+        "type": "instance",
+        "description": "History pagination configuration",
+        "data_structure": "HistoryPaginationConfig"
+      },
+      {
         "name": "SCHEDULES",
         "type": "instance",
         "description": "Release schedules",
@@ -783,7 +798,8 @@
       "Comprehensive monitoring and analytics",
       "Input validation for all parameters",
       "Overflow protection in arithmetic operations",
-      "Deterministic spend-threshold checks for payout operations"
+      "Deterministic spend-threshold checks for payout operations",
+      "Deterministic history pagination checks with explicit validation failures"
     ],
     "access_control": [
       {
