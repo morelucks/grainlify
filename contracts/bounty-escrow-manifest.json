@@ -491,6 +491,28 @@
         "authorization": "any",
         "pausable": false,
         "gas_estimate": "low"
+      },
+      {
+        "name": "get_claim_window",
+        "description": "View configured claim window for a bounty",
+        "parameters": [
+          { "name": "bounty_id", "type": "u64", "description": "Bounty identifier" }
+        ],
+        "returns": { "type": "Option<ClaimWindow>", "description": "Start and end times if configured" },
+        "authorization": "any",
+        "pausable": false,
+        "gas_estimate": "low"
+      },
+      {
+        "name": "validate_claim_window",
+        "description": "Check if current ledger time is within the valid claim window",
+        "parameters": [
+          { "name": "bounty_id", "type": "u64", "description": "Bounty identifier" }
+        ],
+        "returns": { "type": "Result<(), Error>", "description": "Success if valid, error if outside bounds" },
+        "authorization": "any",
+        "pausable": false,
+        "gas_estimate": "low"
       }
     ],
     "admin": [
@@ -682,6 +704,19 @@
         "authorization": "admin",
         "pausable": false,
         "gas_estimate": "high"
+      },
+      {
+        "name": "set_claim_window",
+        "description": "Configure strict start and end times for bounty claims",
+        "parameters": [
+          { "name": "bounty_id", "type": "u64", "description": "Bounty identifier" },
+          { "name": "start_time", "type": "u64", "description": "Timestamp when claiming begins" },
+          { "name": "end_time", "type": "u64", "description": "Timestamp when claiming expires" }
+        ],
+        "returns": { "type": "()", "description": "Empty on success" },
+        "authorization": "admin",
+        "pausable": false,
+        "gas_estimate": "low"
       }
     ]
   },

@@ -3222,6 +3222,7 @@ impl BountyEscrowContract {
     /// # Security
     /// Reentrancy guard is always cleared before any explicit error return after acquisition.
     pub fn release_funds(env: Env, bounty_id: u64, contributor: Address) -> Result<(), Error> {
+        Self::validate_claim_window(env.clone(), bounty_id)?;
         let caller = env
             .storage()
             .instance()
@@ -3604,6 +3605,7 @@ impl BountyEscrowContract {
     /// # Front-running Behavior
     /// Claim is single-use: once marked claimed and escrow is released, subsequent calls fail.
     pub fn claim(env: Env, bounty_id: u64) -> Result<(), Error> {
+        Self::validate_claim_window(env.clone(), bounty_id)?;
         // GUARD: acquire reentrancy lock
         reentrancy_guard::acquire(&env);
 
@@ -5405,6 +5407,78 @@ impl BountyEscrowContract {
         reentrancy_guard::release(&env);
         result
     }
+
+    // ============================================================================
+    // CLAIM-WINDOW VALIDATION
+    // ============================================================================
+
+    /// Defines the valid time range during which a bounty can be claimed.
+    #[contracttype]
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub struct ClaimWindow {
+        pub start_time: u64,
+        pub end_time: u64,
+    }
+
+    /// Configures a strict claim window for a specific bounty.
+    pub fn set_claim_window(
+        env: Env,
+        bounty_id: u64,
+        start_time: u64,
+        end_time: u64,
+    ) -> Result<(), Error> {
+        let admin = rbac::require_admin(&env);
+        admin.require_auth();
+
+        if start_time >= end_time {
+            return Err(Error::InvalidAmount); 
+        }
+
+        let window = ClaimWindow {
+            start_time,
+            end_time,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("clm_win"), bounty_id), &window);
+
+        events::emit_claim_window_configured(
+            &env,
+            events::ClaimWindowConfigured {
+                version: events::EVENT_VERSION_V2,
+                bounty_id,
+                start_time,
+                end_time,
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(())
+    }
+
+    /// View: Gets the configured claim window for a bounty.
+    pub fn get_claim_window(env: Env, bounty_id: u64) -> Option<ClaimWindow> {
+        env.storage()
+            .persistent()
+            .get(&(symbol_short!("clm_win"), bounty_id))
+    }
+
+    /// Validates if the current ledger timestamp falls within the bounty's claim window.
+    pub fn validate_claim_window(env: Env, bounty_id: u64) -> Result<(), Error> {
+        if let Some(window) = Self::get_claim_window(env.clone(), bounty_id) {
+            let current_time = env.ledger().timestamp();
+            
+            if current_time < window.start_time {
+                return Err(Error::DeadlineNotPassed); 
+            }
+            if current_time > window.end_time {
+                return Err(Error::DeadlineNotPassed); 
+            }
+        }
+        Ok(())
+    }
 }
 impl traits::EscrowInterface for BountyEscrowContract {
     /// Lock funds for a bounty through the trait interface
@@ -5422,6 +5496,7 @@ impl traits::EscrowInterface for BountyEscrowContract {
 
     /// Release funds to contributor through the trait interface
     fn release_funds(env: &Env, bounty_id: u64, contributor: Address) -> Result<(), crate::Error> {
+        Self::validate_claim_window(env.clone(), bounty_id)?;
         let entrypoint: fn(Env, u64, Address) -> Result<(), crate::Error> =
             BountyEscrowContract::release_funds;
         entrypoint(env.clone(), bounty_id, contributor)

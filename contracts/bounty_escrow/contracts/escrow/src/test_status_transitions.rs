@@ -461,3 +461,71 @@ fn test_partially_refunded_to_released_fails() {
 
     setup.escrow.release_funds(&bounty_id, &setup.contributor);
 }
+
+
+// ============================================================================
+// CLAIM WINDOW VALIDATION TESTS
+// ============================================================================
+
+#[test]
+fn test_claim_window_lifecycle_success() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let current_time = setup.env.ledger().timestamp();
+    
+    let start_time = current_time + 1000;
+    let end_time = current_time + 5000;
+
+    setup.escrow.set_claim_window(&bounty_id, &start_time, &end_time);
+    setup.env.ledger().set_timestamp(start_time + 100);
+    assert_eq!(setup.escrow.validate_claim_window(&bounty_id), ());
+}
+
+#[test]
+#[should_panic]
+fn test_claim_window_fails_too_early() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let current_time = setup.env.ledger().timestamp();
+    
+    let start_time = current_time + 1000;
+    let end_time = current_time + 5000;
+
+    setup.escrow.set_claim_window(&bounty_id, &start_time, &end_time);
+    setup.escrow.validate_claim_window(&bounty_id);
+}
+
+#[test]
+#[should_panic]
+fn test_claim_window_fails_too_late() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let current_time = setup.env.ledger().timestamp();
+    
+    let start_time = current_time + 1000;
+    let end_time = current_time + 5000;
+
+    setup.escrow.set_claim_window(&bounty_id, &start_time, &end_time);
+    setup.env.ledger().set_timestamp(end_time + 1);
+    setup.escrow.validate_claim_window(&bounty_id);
+}
+
+#[test]
+#[should_panic]
+fn test_claim_window_invalid_range() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let current_time = setup.env.ledger().timestamp();
+    
+    let start_time = current_time + 5000;
+    let end_time = current_time + 1000; 
+
+    setup.escrow.set_claim_window(&bounty_id, &start_time, &end_time);
+}
+
+#[test]
+fn test_unconfigured_claim_window_passes_validation() {
+    let setup = TestSetup::new();
+    let bounty_id = 99; 
+    assert_eq!(setup.escrow.validate_claim_window(&bounty_id), ());
+}

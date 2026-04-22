@@ -1409,3 +1409,24 @@ pub fn emit_recurring_lock_cancelled(env: &Env, event: RecurringLockCancelled) {
     let topics = (symbol_short!("rl_cncl"), event.recurring_id);
     env.events().publish(topics, event);
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLAIM WINDOW EVENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClaimWindowConfigured {
+    pub version: u32,
+    pub bounty_id: u64,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+pub fn emit_claim_window_configured(env: &Env, event: ClaimWindowConfigured) {
+    let topics = (symbol_short!("clm_win"), event.bounty_id);
+    env.events().publish(topics, event);
+}
