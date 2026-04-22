@@ -32,12 +32,13 @@ use crate::events::{
     emit_batch_funds_locked, emit_batch_funds_released, emit_bounty_initialized,
     emit_deprecation_state_changed, emit_deterministic_selection, emit_funds_locked,
     emit_funds_locked_anon, emit_funds_refunded, emit_funds_released,
-    emit_maintenance_mode_changed, emit_notification_preferences_updated,
+    emit_maintenance_mode_changed, emit_maintenance_mode_changed_v2,
+    emit_notification_preferences_updated,
     emit_participant_filter_mode_changed, emit_risk_flags_updated, emit_ticket_claimed,
     emit_refund_approval_consumed, emit_refund_approval_set, emit_ticket_issued, BatchFundsLocked,
     BatchFundsReleased, BountyEscrowInitialized, ClaimCancelled, ClaimCreated, ClaimExecuted,
     CriticalOperationOutcome, DeprecationStateChanged, DeterministicSelectionDerived, FundsLocked,
-    FundsLockedAnon, FundsRefunded, FundsReleased, MaintenanceModeChanged,
+    FundsLockedAnon, FundsRefunded, FundsReleased, MaintenanceModeChanged, MaintenanceModeChangedV2,
     NotificationPreferencesUpdated, ParticipantFilterModeChanged, RefundApprovalConsumed,
     RefundApprovalSet, RefundTriggerType, RiskFlagsUpdated, TicketClaimed, TicketIssued,
     EVENT_VERSION_V2,
@@ -823,6 +824,12 @@ pub enum DataKey {
     NetworkId,
 
     MaintenanceMode, // bool flag
+    /// Timestamp when maintenance mode was last toggled.
+    MaintenanceModeUpdatedAt,
+    /// Admin that last toggled maintenance mode.
+    MaintenanceModeUpdatedBy,
+    /// Schema marker for maintenance mode hardening semantics.
+    MaintenanceModeSchemaVersion,
     /// Per-operation gas budget caps configured by the admin.
     /// See [`gas_budget::GasBudgetConfig`].
     GasBudgetConfig,
@@ -960,6 +967,7 @@ pub struct ReleaseApproval {
 }
 
 const REFUND_ELIGIBILITY_SCHEMA_VERSION_V1: u32 = 1;
+const MAINTENANCE_MODE_SCHEMA_VERSION_V1: u32 = 1;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1184,6 +1192,20 @@ impl BountyEscrowContract {
             &DataKey::RefundEligibilitySchemaVersion,
             &REFUND_ELIGIBILITY_SCHEMA_VERSION_V1,
         );
+        // Upgrade-safe maintenance mode initialization (explicit key write).
+        env.storage()
+            .instance()
+            .set(&DataKey::MaintenanceMode, &false);
+        env.storage().instance().set(
+            &DataKey::MaintenanceModeSchemaVersion,
+            &MAINTENANCE_MODE_SCHEMA_VERSION_V1,
+        );
+        env.storage()
+            .instance()
+            .set(&DataKey::MaintenanceModeUpdatedAt, &env.ledger().timestamp());
+        env.storage()
+            .instance()
+            .set(&DataKey::MaintenanceModeUpdatedBy, &admin);
 
         events::emit_bounty_initialized(
             &env,
@@ -1977,13 +1999,40 @@ impl BountyEscrowContract {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
+        let previous_enabled = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaintenanceMode)
+            .unwrap_or(false);
+
+        // Idempotent behavior: if no state change, do not emit events.
+        if previous_enabled == enabled {
+            return Ok(());
+        }
+
         env.storage()
             .instance()
             .set(&DataKey::MaintenanceMode, &enabled);
+        env.storage()
+            .instance()
+            .set(&DataKey::MaintenanceModeUpdatedAt, &env.ledger().timestamp());
+        env.storage()
+            .instance()
+            .set(&DataKey::MaintenanceModeUpdatedBy, &admin);
 
         events::emit_maintenance_mode_changed(
             &env,
             MaintenanceModeChanged {
+                enabled,
+                admin: admin.clone(),
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+        emit_maintenance_mode_changed_v2(
+            &env,
+            MaintenanceModeChangedV2 {
+                version: EVENT_VERSION_V2,
+                previous_enabled,
                 enabled,
                 admin: admin.clone(),
                 timestamp: env.ledger().timestamp(),

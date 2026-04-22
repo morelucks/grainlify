@@ -35,6 +35,14 @@
           "Added refund approval audit events for approval set/consumption lifecycle",
           "Added upgrade-safe storage marker for refund eligibility schema versioning"
         ]
+      },
+      {
+        "version": "2.2.0",
+        "release_date": "2026-04-22",
+        "changes": [
+          "Hardened maintenance mode with explicit initialization, idempotent toggling, and audit-friendly v2 events",
+          "Added upgrade-safe storage keys for maintenance mode metadata and schema versioning"
+        ]
       }
     ]
   },
@@ -791,6 +799,30 @@
         "data_structure": "u32"
       },
       {
+        "name": "MaintenanceMode",
+        "type": "instance",
+        "description": "Maintenance mode flag (explicitly initialized)",
+        "data_structure": "bool"
+      },
+      {
+        "name": "MaintenanceModeUpdatedAt",
+        "type": "instance",
+        "description": "Timestamp when maintenance mode last changed",
+        "data_structure": "u64"
+      },
+      {
+        "name": "MaintenanceModeUpdatedBy",
+        "type": "instance",
+        "description": "Admin address that last changed maintenance mode",
+        "data_structure": "Address"
+      },
+      {
+        "name": "MaintenanceModeSchemaVersion",
+        "type": "instance",
+        "description": "Version marker for maintenance mode semantics",
+        "data_structure": "u32"
+      },
+      {
         "name": "ReentrancyGuard",
         "type": "temporary",
         "description": "Reentrancy protection flag",
@@ -809,7 +841,8 @@
       "Input validation for all parameters",
       "Overflow protection in arithmetic operations",
       "Event emission for audit trail",
-      "Deterministic refund eligibility view semantics"
+      "Deterministic refund eligibility view semantics",
+      "Deterministic maintenance mode semantics with audit events"
     ],
     "access_control": [
       {
@@ -1066,6 +1099,33 @@
           }
         ],
         "trigger": "Successful refund call with admin approval record"
+      },
+      {
+        "name": "MaintenanceModeChangedV2",
+        "description": "Maintenance mode toggled with previous state (audit-friendly)",
+        "data": [
+          {
+            "name": "previous_enabled",
+            "type": "bool",
+            "description": "Previous maintenance mode state"
+          },
+          {
+            "name": "enabled",
+            "type": "bool",
+            "description": "New maintenance mode state"
+          },
+          {
+            "name": "admin",
+            "type": "Address",
+            "description": "Admin who toggled maintenance mode"
+          },
+          {
+            "name": "timestamp",
+            "type": "u64",
+            "description": "Ledger timestamp"
+          }
+        ],
+        "trigger": "Admin toggles maintenance mode (state change only)"
       }
     ]
   },

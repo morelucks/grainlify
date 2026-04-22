@@ -798,6 +798,22 @@ pub fn emit_maintenance_mode_changed(env: &Env, event: MaintenanceModeChanged) {
     env.events().publish(topics, event);
 }
 
+/// V2 payload for maintenance mode changes (deterministic + audit-friendly).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaintenanceModeChangedV2 {
+    pub version: u32,
+    pub previous_enabled: bool,
+    pub enabled: bool,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+pub fn emit_maintenance_mode_changed_v2(env: &Env, event: MaintenanceModeChangedV2) {
+    let topics = (symbol_short!("maint"), symbol_short!("v2"));
+    env.events().publish(topics, event);
+}
+
 /// Payload for the [`emit_participant_filter_mode_changed`] event.
 ///
 /// Emitted when the admin changes the participant filter mode.

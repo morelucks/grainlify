@@ -129,6 +129,33 @@ fn test_refund_eligibility_eligible_with_admin_approval_before_deadline() {
     assert!(view.approval_present);
 }
 
+#[test]
+fn test_maintenance_mode_blocks_lock_but_not_release_or_refund_paths() {
+    let setup = TestSetup::new();
+    let bounty_id = 202;
+    let amount = 1000;
+    let deadline = setup.env.ledger().timestamp() + 100;
+
+    setup.escrow.set_maintenance_mode(&true);
+
+    // Lock should be blocked (maintenance mode acts like lock pause).
+    let res = setup
+        .escrow
+        .try_lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    assert!(matches!(res, Err(Ok(Error::FundsPaused))));
+
+    // Existing escrow should still be able to release/refund (maintenance mode only affects lock).
+    setup
+        .escrow
+        .set_maintenance_mode(&false);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup.escrow.set_maintenance_mode(&true);
+
+    setup.escrow.release_funds(&bounty_id, &setup.contributor);
+}
+
 // Valid transitions: Locked → Released
 #[test]
 fn test_locked_to_released() {
