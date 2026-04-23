@@ -23,5 +23,8 @@ contracts/deployments/*.json
 soroban/.soroban/identity/
 soroban/.soroban/network/
 
+# Node dependencies
+**/node_modules/
+
 # Test snapshots (auto-generated, environment-dependent)
 **/test_snapshots/

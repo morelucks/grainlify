@@ -13,7 +13,7 @@ extern crate std;
 
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    token, vec, Address, Env, String,
+    token, vec, Address, Env, String, Vec,
 };
 
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
         set_split_config, BeneficiarySplit, SplitConfig, SplitConfigSetEvent, SplitPayoutEvent,
         SplitPayoutResult, TOTAL_BASIS_POINTS,
     },
-    DataKey, ProgramData, PROGRAM_DATA,
+    DataKey, ProgramData, ProgramMetadata, PROGRAM_DATA, STORAGE_SCHEMA_VERSION,
 };
 
 // ===========================================================================
@@ -79,11 +79,17 @@ impl SplitTestEnv {
             total_funds: remaining_balance,
             remaining_balance,
             authorized_payout_key: self.payout_key.clone(),
+            delegate: None,
+            delegate_permissions: 0,
             payout_history: vec![&self.env],
             token_address: self.token.clone(),
             initial_liquidity: 0,
             risk_flags: 0,
+            metadata: crate::ProgramMetadata::empty(&self.env),
             reference_hash: None,
+            archived: false,
+            archived_at: None,
+            schema_version: STORAGE_SCHEMA_VERSION,
         };
         self.env
             .storage()
@@ -751,13 +757,16 @@ mod security {
                 },
             ];
             set_split_config(&setup.env, &setup.program_id, bens);
-            });
+        });
 
-            setup.env.as_contract(&setup.contract_id, || {
+        setup.env.as_contract(&setup.contract_id, || {
             let result = execute_split_payout(&setup.env, &setup.program_id, huge);
 
             assert_eq!(result.total_distributed, huge);
-            assert_eq!(setup.get_balance(&setup.r1) + setup.get_balance(&setup.r2), huge);
+            assert_eq!(
+                setup.get_balance(&setup.r1) + setup.get_balance(&setup.r2),
+                huge
+            );
             assert_eq!(result.remaining_balance, 0);
         });
     }

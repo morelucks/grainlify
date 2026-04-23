@@ -120,6 +120,73 @@ fn authorize_contract_call(
     }]);
 }
 
+#[test]
+fn test_refund_eligibility_ineligible_before_deadline_without_approval() {
+    let setup = TestSetup::new();
+    let bounty_id = 99;
+    let amount = 1_000;
+    let deadline = setup.env.ledger().timestamp() + 500;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+
+    let view = setup.escrow.get_refund_eligibility_view(&bounty_id);
+    assert!(!view.eligible);
+    assert_eq!(
+        view.code,
+        RefundEligibilityCode::IneligibleDeadlineNotPassed
+    );
+    assert_eq!(view.amount, 0);
+    assert!(!view.approval_present);
+}
+
+#[test]
+fn test_refund_eligibility_eligible_after_deadline() {
+    let setup = TestSetup::new();
+    let bounty_id = 100;
+    let amount = 1_200;
+    let deadline = setup.env.ledger().timestamp() + 100;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup.env.ledger().set_timestamp(deadline + 1);
+
+    let view = setup.escrow.get_refund_eligibility_view(&bounty_id);
+    assert!(view.eligible);
+    assert_eq!(view.code, RefundEligibilityCode::EligibleDeadlinePassed);
+    assert_eq!(view.amount, amount);
+    assert_eq!(view.recipient, Some(setup.depositor.clone()));
+    assert!(!view.approval_present);
+}
+
+#[test]
+fn test_refund_eligibility_eligible_with_admin_approval_before_deadline() {
+    let setup = TestSetup::new();
+    let bounty_id = 101;
+    let amount = 2_000;
+    let deadline = setup.env.ledger().timestamp() + 1_000;
+    let custom_recipient = Address::generate(&setup.env);
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup.escrow.approve_refund(
+        &bounty_id,
+        &500,
+        &custom_recipient,
+        &RefundMode::Partial,
+    );
+
+    let view = setup.escrow.get_refund_eligibility_view(&bounty_id);
+    assert!(view.eligible);
+    assert_eq!(view.code, RefundEligibilityCode::EligibleAdminApproval);
+    assert_eq!(view.amount, 500);
+    assert_eq!(view.recipient, Some(custom_recipient));
+    assert!(view.approval_present);
+}
+
 // Valid transitions: Locked → Released
 #[test]
 fn test_locked_to_released() {

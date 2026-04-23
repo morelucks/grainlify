@@ -9,10 +9,22 @@
 // written, no token transfer is made, and every "sibling" row in the
 // same batch is left completely unaffected.
 //
-// This file exercises that guarantee from a second, independent angle:
-// it uses a functional-style setup helper instead of the `TestCtx` struct
-// found in `test_batch_failure_mode.rs`, providing complementary coverage
-// with a different test harness.
+// ## Error code contract
+//
+// | Condition                              | Error             |
+// |----------------------------------------|-------------------|
+// | batch size == 0                        | InvalidBatchSize  |
+// | batch size > MAX_BATCH_SIZE            | InvalidBatchSize  |
+// | same bounty_id twice within this batch | DuplicateBountyId |
+// | bounty_id already in persistent store  | BountyExists      |
+// | amount ≤ 0                             | InvalidAmount     |
+// | bounty_id missing (release)            | BountyNotFound    |
+// | escrow not Locked (release)            | FundsNotLocked    |
+// | contract not initialised               | NotInitialized    |
+//
+// This file uses a functional-style setup helper instead of the `TestCtx`
+// struct found in `test_batch_failure_mode.rs`, providing complementary
+// coverage with a different test harness.
 //
 // ## Coverage (this file)
 //
@@ -50,7 +62,9 @@ use soroban_sdk::{
     token, vec, Address, Env, Vec,
 };
 
-use crate::{BountyEscrowContract, BountyEscrowContractClient, Error, LockFundsItem, ReleaseFundsItem};
+use crate::{
+    BountyEscrowContract, BountyEscrowContractClient, Error, LockFundsItem, ReleaseFundsItem,
+};
 
 // ---------------------------------------------------------------------------
 // Constants — must match lib.rs
@@ -82,28 +96,19 @@ fn setup() -> Ctx<'static> {
 
     let admin = Address::generate(&env);
     let token_admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract(token_admin.clone());
-    /// Convenience: build a single `LockFundsItem`.
-    fn lock_item(
-        env: &Env,
-        bounty_id: u64,
-        depositor: Address,
-        amount: i128,
-        deadline: u64,
-    ) -> LockFundsItem {
-        LockFundsItem {
-            bounty_id,
-            depositor,
-            amount,
-            deadline,
-        }
-    }
+    let token_sac_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_id = token_sac_contract.address();
 
     let contract_id = env.register_contract(None, BountyEscrowContract);
     let client = BountyEscrowContractClient::new(&env, &contract_id);
     client.init(&admin, &token_id);
 
-    Ctx { env, client, token_id, token_admin }
+    Ctx {
+        env,
+        client,
+        token_id,
+        token_admin,
+    }
 }
 
 /// Mint `amount` tokens to `recipient`.
@@ -153,7 +158,10 @@ fn batch_lock_empty_batch_fails() {
     let ctx = setup();
     let empty: Vec<LockFundsItem> = Vec::new(&ctx.env);
     assert_eq!(
-        ctx.client.try_batch_lock_funds(&empty).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_lock_funds(&empty)
+            .unwrap_err()
+            .unwrap(),
         Error::InvalidBatchSize
     );
 }
@@ -194,7 +202,10 @@ fn batch_lock_exceeds_max_batch_size_fails() {
         items.push_back(lock_item(&ctx, i, depositor.clone(), AMOUNT));
     }
     assert_eq!(
-        ctx.client.try_batch_lock_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_lock_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::InvalidBatchSize
     );
 }
@@ -218,7 +229,12 @@ fn batch_lock_duplicate_bounty_id_within_batch_fails() {
         lock_item(&ctx, 99, dep2, AMOUNT), // duplicate
     ];
     assert_eq!(
-        ctx.client.try_batch_lock_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_lock_funds(&items)
+            .unwrap_err()
+            .unwrap(),
+        // Within-batch duplicate is distinct from a pre-existing storage entry;
+        // it returns DuplicateBountyId rather than BountyExists.
         Error::DuplicateBountyId
     );
 }
@@ -234,7 +250,10 @@ fn batch_lock_bounty_id_already_in_storage_fails() {
 
     let items = vec![&ctx.env, lock_item(&ctx, 42, depositor, AMOUNT)];
     assert_eq!(
-        ctx.client.try_batch_lock_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_lock_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::BountyExists
     );
 }
@@ -260,14 +279,17 @@ fn batch_lock_invalid_second_item_rolls_back_first_sibling() {
         lock_item(&ctx, 2, dep2, 0),      // zero amount → InvalidAmount
     ];
     assert_eq!(
-        ctx.client.try_batch_lock_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_lock_funds(&items)
+            .unwrap_err()
+            .unwrap(),
+        // Zero amount returns InvalidAmount, not ActionNotFound.
         Error::InvalidAmount
     );
 
-    // Sibling bounty 1 must NOT have been committed
-    assert_eq!(
-        ctx.client.try_get_escrow_info(&1).unwrap_err().unwrap(),
-        Error::BountyNotFound,
+    // Sibling bounty 1 must NOT have been committed.
+    assert!(
+        ctx.client.try_get_escrow(&1).is_err(),
         "sibling bounty 1 must not be stored when a later item fails"
     );
 }
@@ -290,18 +312,19 @@ fn batch_lock_duplicate_last_item_rolls_back_all_previous_siblings() {
         lock_item(&ctx, 11, dep3, AMOUNT), // dup of bounty 11
     ];
     assert_eq!(
-        ctx.client.try_batch_lock_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_lock_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::DuplicateBountyId
     );
 
-    assert_eq!(
-        ctx.client.try_get_escrow_info(&10).unwrap_err().unwrap(),
-        Error::BountyNotFound,
+    assert!(
+        ctx.client.try_get_escrow(&10).is_err(),
         "sibling bounty 10 must not be stored"
     );
-    assert_eq!(
-        ctx.client.try_get_escrow_info(&11).unwrap_err().unwrap(),
-        Error::BountyNotFound,
+    assert!(
+        ctx.client.try_get_escrow(&11).is_err(),
         "sibling bounty 11 must not be stored"
     );
 }
@@ -346,7 +369,10 @@ fn batch_lock_zero_amount_fails() {
     mint(&ctx, &depositor, AMOUNT);
     let items = vec![&ctx.env, lock_item(&ctx, 1, depositor, 0)];
     assert_eq!(
-        ctx.client.try_batch_lock_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_lock_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::InvalidAmount
     );
 }
@@ -386,7 +412,10 @@ fn batch_release_empty_batch_fails() {
     let ctx = setup();
     let empty: Vec<ReleaseFundsItem> = Vec::new(&ctx.env);
     assert_eq!(
-        ctx.client.try_batch_release_funds(&empty).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_release_funds(&empty)
+            .unwrap_err()
+            .unwrap(),
         Error::InvalidBatchSize
     );
 }
@@ -402,7 +431,10 @@ fn batch_release_single_item_succeeds() {
 
     let items = vec![
         &ctx.env,
-        ReleaseFundsItem { bounty_id: 1, contributor },
+        ReleaseFundsItem {
+            bounty_id: 1,
+            contributor,
+        },
     ];
     assert_eq!(ctx.client.batch_release_funds(&items), 1);
 }
@@ -449,7 +481,10 @@ fn batch_release_exceeds_max_batch_size_fails() {
         });
     }
     assert_eq!(
-        ctx.client.try_batch_release_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_release_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::InvalidBatchSize
     );
 }
@@ -468,11 +503,22 @@ fn batch_release_duplicate_bounty_id_within_batch_fails() {
 
     let items = vec![
         &ctx.env,
-        ReleaseFundsItem { bounty_id: 5, contributor: Address::generate(&ctx.env) },
-        ReleaseFundsItem { bounty_id: 5, contributor: Address::generate(&ctx.env) },
+        ReleaseFundsItem {
+            bounty_id: 5,
+            contributor: Address::generate(&ctx.env),
+        },
+        ReleaseFundsItem {
+            bounty_id: 5,
+            contributor: Address::generate(&ctx.env),
+        },
     ];
     assert_eq!(
-        ctx.client.try_batch_release_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_release_funds(&items)
+            .unwrap_err()
+            .unwrap(),
+        // Within-batch duplicate returns DuplicateBountyId (not BountyExists,
+        // which is reserved for a bounty_id already present in storage).
         Error::DuplicateBountyId
     );
 }
@@ -493,7 +539,10 @@ fn batch_release_nonexistent_bounty_fails() {
         },
     ];
     assert_eq!(
-        ctx.client.try_batch_release_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_release_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::BountyNotFound
     );
 }
@@ -512,16 +561,25 @@ fn batch_release_nonexistent_second_item_rolls_back_first_sibling() {
 
     let items = vec![
         &ctx.env,
-        ReleaseFundsItem { bounty_id: 1, contributor: Address::generate(&ctx.env) }, // valid
-        ReleaseFundsItem { bounty_id: 9999, contributor: Address::generate(&ctx.env) }, // missing
+        ReleaseFundsItem {
+            bounty_id: 1,
+            contributor: Address::generate(&ctx.env),
+        }, // valid
+        ReleaseFundsItem {
+            bounty_id: 9999,
+            contributor: Address::generate(&ctx.env),
+        }, // missing
     ];
     assert_eq!(
-        ctx.client.try_batch_release_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_release_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::BountyNotFound
     );
 
     assert_eq!(
-        ctx.client.get_escrow_info(&1).status,
+        ctx.client.get_escrow(&1).status,
         crate::EscrowStatus::Locked,
         "sibling bounty 1 must remain Locked after its neighbour caused a rollback"
     );
@@ -543,10 +601,16 @@ fn batch_release_already_released_bounty_fails() {
 
     let items = vec![
         &ctx.env,
-        ReleaseFundsItem { bounty_id: 7, contributor: Address::generate(&ctx.env) },
+        ReleaseFundsItem {
+            bounty_id: 7,
+            contributor: Address::generate(&ctx.env),
+        },
     ];
     assert_eq!(
-        ctx.client.try_batch_release_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_release_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::FundsNotLocked
     );
 }
@@ -577,16 +641,25 @@ fn batch_release_mixed_locked_and_refunded_is_atomic() {
 
     let items = vec![
         &ctx.env,
-        ReleaseFundsItem { bounty_id: 20, contributor: Address::generate(&ctx.env) }, // Locked
-        ReleaseFundsItem { bounty_id: 21, contributor: Address::generate(&ctx.env) }, // Refunded
+        ReleaseFundsItem {
+            bounty_id: 20,
+            contributor: Address::generate(&ctx.env),
+        }, // Locked
+        ReleaseFundsItem {
+            bounty_id: 21,
+            contributor: Address::generate(&ctx.env),
+        }, // Refunded
     ];
     assert_eq!(
-        ctx.client.try_batch_release_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_release_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::FundsNotLocked
     );
 
     assert_eq!(
-        ctx.client.get_escrow_info(&20).status,
+        ctx.client.get_escrow(&20).status,
         crate::EscrowStatus::Locked,
         "locked sibling must not be released when a refunded sibling fails"
     );
@@ -607,7 +680,10 @@ fn batch_release_not_initialized_fails() {
 
     let items = vec![
         &env,
-        ReleaseFundsItem { bounty_id: 1, contributor: Address::generate(&env) },
+        ReleaseFundsItem {
+            bounty_id: 1,
+            contributor: Address::generate(&env),
+        },
     ];
     assert_eq!(
         client.try_batch_release_funds(&items).unwrap_err().unwrap(),
@@ -638,16 +714,25 @@ fn batch_release_partial_failure_leaves_all_siblings_locked() {
     // Batch: already-released 30 + still-Locked 32
     let items = vec![
         &ctx.env,
-        ReleaseFundsItem { bounty_id: 30, contributor: Address::generate(&ctx.env) }, // Released → invalid
-        ReleaseFundsItem { bounty_id: 32, contributor: Address::generate(&ctx.env) }, // Locked (valid sibling)
+        ReleaseFundsItem {
+            bounty_id: 30,
+            contributor: Address::generate(&ctx.env),
+        }, // Released → invalid
+        ReleaseFundsItem {
+            bounty_id: 32,
+            contributor: Address::generate(&ctx.env),
+        }, // Locked (valid sibling)
     ];
     assert_eq!(
-        ctx.client.try_batch_release_funds(&items).unwrap_err().unwrap(),
+        ctx.client
+            .try_batch_release_funds(&items)
+            .unwrap_err()
+            .unwrap(),
         Error::FundsNotLocked
     );
 
     assert_eq!(
-        ctx.client.get_escrow_info(&32).status,
+        ctx.client.get_escrow(&32).status,
         crate::EscrowStatus::Locked,
         "bounty 32 must remain Locked; its sibling's failure must not release it"
     );

@@ -540,8 +540,14 @@ fn test_search_includes_jurisdiction_enabled_programs() {
 #[test]
 fn test_get_programs_by_label_filters_results() {
     setup_search!(
-        env, client, _contract_id, _admin, program_admin,
-        _token_client, _token_admin, 100_000i128
+        env,
+        client,
+        _contract_id,
+        _admin,
+        program_admin,
+        _token_client,
+        _token_admin,
+        100_000i128
     );
 
     let payroll = vec![
@@ -549,10 +555,7 @@ fn test_get_programs_by_label_filters_results() {
         String::from_str(&env, "payroll"),
         String::from_str(&env, "grant-2024"),
     ];
-    let milestone = vec![
-        &env,
-        String::from_str(&env, "milestone-1"),
-    ];
+    let milestone = vec![&env, String::from_str(&env, "milestone-1")];
 
     client.register_program_with_labels(
         &1,
@@ -585,8 +588,14 @@ fn test_get_programs_by_label_filters_results() {
 #[test]
 fn test_update_program_labels_by_program_admin() {
     setup_search!(
-        env, client, _contract_id, contract_admin, program_admin,
-        _token_client, token_admin, 100_000i128
+        env,
+        client,
+        _contract_id,
+        contract_admin,
+        program_admin,
+        _token_client,
+        token_admin,
+        100_000i128
     );
 
     client.register_program(
@@ -604,13 +613,20 @@ fn test_update_program_labels_by_program_admin() {
     let updated = client.update_program_labels(&program_admin, &9, &labels);
 
     assert_eq!(updated.labels.len(), 2);
-    assert_eq!(updated.labels.get(0).unwrap(), String::from_str(&env, "grant-2024"));
+    assert_eq!(
+        updated.labels.get(0).unwrap(),
+        String::from_str(&env, "grant-2024")
+    );
     assert_eq!(client.get_program(&9).labels.len(), 2);
 
     let admin_update = vec![&env, String::from_str(&env, "payroll")];
-    let updated_by_contract_admin = client.update_program_labels(&contract_admin, &9, &admin_update);
+    let updated_by_contract_admin =
+        client.update_program_labels(&contract_admin, &9, &admin_update);
     assert_eq!(updated_by_contract_admin.labels.len(), 1);
-    assert_eq!(updated_by_contract_admin.labels.get(0).unwrap(), String::from_str(&env, "payroll"));
+    assert_eq!(
+        updated_by_contract_admin.labels.get(0).unwrap(),
+        String::from_str(&env, "payroll")
+    );
 
     let outsider = Address::generate(&env);
     token_admin.mint(&outsider, &1_000);
@@ -621,8 +637,14 @@ fn test_update_program_labels_by_program_admin() {
 #[test]
 fn test_restricted_label_config_is_enforced() {
     setup_search!(
-        env, client, _contract_id, contract_admin, program_admin,
-        _token_client, _token_admin, 100_000i128
+        env,
+        client,
+        _contract_id,
+        contract_admin,
+        program_admin,
+        _token_client,
+        _token_admin,
+        100_000i128
     );
 
     let allowed = vec![
@@ -655,6 +677,239 @@ fn test_restricted_label_config_is_enforced() {
 
     let fetched = client.get_label_config();
     assert_eq!(fetched.allowed_labels.len(), 2);
-    assert_eq!(fetched.allowed_labels.get(0).unwrap(), String::from_str(&env, "payroll"));
-    assert_eq!(client.get_program(&20).labels.get(0).unwrap(), String::from_str(&env, "payroll"));
+    assert_eq!(
+        fetched.allowed_labels.get(0).unwrap(),
+        String::from_str(&env, "payroll")
+    );
+    assert_eq!(
+        client.get_program(&20).labels.get(0).unwrap(),
+        String::from_str(&env, "payroll")
+    );
+}
+
+// ==================== EMPTY REGISTRY — LABEL SEARCH ====================
+
+/// `get_programs_by_label` on a freshly initialised contract must return an
+/// empty page with `has_more = false` and no cursor – the `ProgramIndex` key
+/// does not yet exist in storage.
+#[test]
+fn test_search_by_label_empty_registry() {
+    setup_search!(
+        env,
+        client,
+        _contract_id,
+        _admin,
+        _program_admin,
+        _token_client,
+        _token_admin,
+        0i128
+    );
+
+    let page = client.get_programs_by_label(&String::from_str(&env, "payroll"), &None, &10);
+    assert_eq!(page.records.len(), 0);
+    assert_eq!(page.next_cursor, None);
+    assert!(!page.has_more);
+}
+
+/// Providing a cursor when the registry is empty must also return an empty
+/// page (the cursor can never be found in an empty index).
+#[test]
+fn test_search_by_label_with_cursor_on_empty_registry() {
+    setup_search!(
+        env,
+        client,
+        _contract_id,
+        _admin,
+        _program_admin,
+        _token_client,
+        _token_admin,
+        0i128
+    );
+
+    let page = client.get_programs_by_label(&String::from_str(&env, "payroll"), &Some(1), &10);
+    assert_eq!(page.records.len(), 0);
+    assert_eq!(page.next_cursor, None);
+    assert!(!page.has_more);
+}
+
+// ==================== EMPTY REGISTRY — FILTERED GET_PROGRAMS ====================
+
+/// `get_programs` with `status_filter = 1` (Active) on an empty index must
+/// return an empty page without panicking.
+#[test]
+fn test_search_empty_registry_with_status_filter() {
+    setup_search!(
+        env,
+        client,
+        _contract_id,
+        _admin,
+        _program_admin,
+        _token_client,
+        _token_admin,
+        0i128
+    );
+
+    let criteria = ProgramSearchCriteria {
+        status_filter: 1,
+        admin: None,
+    };
+    let page = client.get_programs(&criteria, &None, &10);
+    assert_eq!(page.records.len(), 0);
+    assert_eq!(page.next_cursor, None);
+    assert!(!page.has_more);
+}
+
+/// `get_programs` with an `admin` filter on an empty index must return an
+/// empty page without attempting a storage scan.
+#[test]
+fn test_search_empty_registry_with_admin_filter() {
+    setup_search!(
+        env,
+        client,
+        _contract_id,
+        _admin,
+        program_admin,
+        _token_client,
+        _token_admin,
+        0i128
+    );
+
+    let criteria = ProgramSearchCriteria {
+        status_filter: 0,
+        admin: Some(program_admin.clone()),
+    };
+    let page = client.get_programs(&criteria, &None, &10);
+    assert_eq!(page.records.len(), 0);
+    assert_eq!(page.next_cursor, None);
+    assert!(!page.has_more);
+}
+
+/// Passing a cursor to `get_programs` when the registry is empty must give
+/// an empty page – the cursor id will never appear in the empty `ProgramIndex`.
+#[test]
+fn test_search_empty_registry_with_cursor() {
+    setup_search!(
+        env,
+        client,
+        _contract_id,
+        _admin,
+        _program_admin,
+        _token_client,
+        _token_admin,
+        0i128
+    );
+
+    let criteria = ProgramSearchCriteria {
+        status_filter: 0,
+        admin: None,
+    };
+    let page = client.get_programs(&criteria, &Some(999), &10);
+    assert_eq!(page.records.len(), 0);
+    assert_eq!(page.next_cursor, None);
+    assert!(!page.has_more);
+}
+
+// ==================== LABEL SEARCH — PAGINATION AND UNKNOWN CURSOR ====================
+
+/// `get_programs_by_label` must page correctly when only some indexed
+/// programs carry the requested label.  The cursor always points at the last
+/// *collected* id and the next page resumes strictly after that position,
+/// skipping non-matching entries in between.
+#[test]
+fn test_search_by_label_pagination() {
+    setup_search!(
+        env,
+        client,
+        _contract_id,
+        _admin,
+        program_admin,
+        _token_client,
+        _token_admin,
+        100_000i128
+    );
+
+    let payroll = vec![&env, String::from_str(&env, "payroll")];
+    let other = vec![&env, String::from_str(&env, "other")];
+
+    // index pattern: payroll, other, payroll, other, payroll
+    client.register_program_with_labels(
+        &1,
+        &program_admin,
+        &String::from_str(&env, "P1"),
+        &1_000,
+        &payroll,
+    );
+    client.register_program_with_labels(
+        &2,
+        &program_admin,
+        &String::from_str(&env, "P2"),
+        &1_000,
+        &other,
+    );
+    client.register_program_with_labels(
+        &3,
+        &program_admin,
+        &String::from_str(&env, "P3"),
+        &1_000,
+        &payroll,
+    );
+    client.register_program_with_labels(
+        &4,
+        &program_admin,
+        &String::from_str(&env, "P4"),
+        &1_000,
+        &other,
+    );
+    client.register_program_with_labels(
+        &5,
+        &program_admin,
+        &String::from_str(&env, "P5"),
+        &1_000,
+        &payroll,
+    );
+
+    // First page: limit 2 → should collect ids 1 and 3, cursor stops before 5
+    let page1 = client.get_programs_by_label(&String::from_str(&env, "payroll"), &None, &2);
+    assert_eq!(page1.records.len(), 2);
+    assert!(page1.has_more);
+    assert_eq!(page1.records.get(0).unwrap().program_id, 1);
+    assert_eq!(page1.records.get(1).unwrap().program_id, 3);
+
+    // Second page: resume after id 3 → should collect id 5 only
+    let page2 =
+        client.get_programs_by_label(&String::from_str(&env, "payroll"), &page1.next_cursor, &2);
+    assert_eq!(page2.records.len(), 1);
+    assert!(!page2.has_more);
+    assert_eq!(page2.next_cursor, None);
+    assert_eq!(page2.records.get(0).unwrap().program_id, 5);
+}
+
+/// A cursor that is not present anywhere in the `ProgramIndex` must produce
+/// an empty page for `get_programs_by_label` (no fallback to a full scan).
+#[test]
+fn test_search_by_label_unknown_cursor() {
+    setup_search!(
+        env,
+        client,
+        _contract_id,
+        _admin,
+        program_admin,
+        _token_client,
+        _token_admin,
+        100_000i128
+    );
+
+    let payroll = vec![&env, String::from_str(&env, "payroll")];
+    client.register_program_with_labels(
+        &1,
+        &program_admin,
+        &String::from_str(&env, "P1"),
+        &1_000,
+        &payroll,
+    );
+
+    let page = client.get_programs_by_label(&String::from_str(&env, "payroll"), &Some(999), &10);
+    assert_eq!(page.records.len(), 0);
+    assert_eq!(page.next_cursor, None);
+    assert!(!page.has_more);
 }

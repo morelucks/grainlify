@@ -26,29 +26,138 @@ const MAX_PAGE_SIZE: u32 = 20;
 const MAX_LABELS: u32 = 10;
 const MAX_LABEL_LENGTH: u32 = 32;
 const PROGRAM_REGISTERED: soroban_sdk::Symbol = symbol_short!("prg_reg");
+const PROGRAM_REGISTRY: soroban_sdk::Symbol = symbol_short!("prg_rgst");
 const PROGRAM_LABELS_UPDATED: soroban_sdk::Symbol = symbol_short!("prg_lbl");
 const LABEL_CONFIG_UPDATED: soroban_sdk::Symbol = symbol_short!("lbl_cfg");
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
+/// Canonical error enum for program-escrow public API.
+///
+/// All public entrypoints return `Result<T, Error>` to provide stable,
+/// machine-readable error codes for clients, indexers, and integrators.
+/// Error codes are stable across contract versions and should be used
+/// for programmatic error handling.
+///
+/// # Security Notes
+///
+/// - Error messages never expose sensitive data (keys, balances, internal state)
+/// - Error codes are deterministic and stable for client-side discrimination
+/// - All errors are safe to log and display to end users
 pub enum Error {
+    /// Contract has already been initialized.
+    ///
+    /// **When raised:** Attempting to call `init()` on an already-initialized contract.
+    /// **Client action:** None required; contract is ready for use.
     AlreadyInitialized = 1,
+
+    /// Contract has not been initialized.
+    ///
+    /// **When raised:** Calling any mutating function before `init()` is called.
+    /// **Client action:** Call `init()` with admin and token addresses first.
     NotInitialized = 2,
+
+    /// Program with this ID already exists.
+    ///
+    /// **When raised:** Attempting to register a program with a `program_id`
+    /// that is already in use.
+    /// **Client action:** Use a different `program_id` or query existing programs
+    /// to find available IDs.
     ProgramExists = 3,
+
+    /// Program with this ID does not exist.
+    ///
+    /// **When raised:** Attempting to read, update, or query a program that
+    /// has not been registered.
+    /// **Client action:** Verify the `program_id` is correct and that the
+    /// program has been registered.
     ProgramNotFound = 4,
+
+    /// Caller is not authorized to perform this action.
+    ///
+    /// **When raised:** Attempting to perform an admin-only action without
+    /// proper authorization, or updating a program without being the contract
+    /// admin or program admin.
+    /// **Client action:** Ensure the correct address is signing the transaction.
     Unauthorized = 5,
+
+    /// Invalid batch size.
+    ///
+    /// **When raised:** Batch registration with 0 items or exceeding `MAX_BATCH_SIZE`.
+    /// **Client action:** Ensure batch contains 1-20 items (inclusive).
     InvalidBatchSize = 6,
+
+    /// Duplicate program ID within a single batch.
+    ///
+    /// **When raised:** Multiple items in a batch registration have the same
+    /// `program_id`.
+    /// **Client action:** Ensure all `program_id` values in the batch are unique.
     DuplicateProgramId = 7,
+
+    /// Invalid funding amount.
+    ///
+    /// **When raised:** `total_funding` is zero or negative.
+    /// **Client action:** Provide a positive funding amount.
     InvalidAmount = 8,
+
+    /// Invalid program name.
+    ///
+    /// **When raised:** Program name is empty (zero length).
+    /// **Client action:** Provide a non-empty program name.
     InvalidName = 9,
+
+    /// Contract is deprecated and no longer accepts new registrations.
+    ///
+    /// **When raised:** Attempting to register a program after deprecation
+    /// has been enabled.
+    /// **Client action:** Check deprecation status before registration;
+    /// migrate to the target contract if one is specified.
     ContractDeprecated = 10,
+
+    /// KYC attestation required by jurisdiction.
+    ///
+    /// **When raised:** Program jurisdiction requires KYC but `kyc_attested`
+    /// is `None` or `false`.
+    /// **Client action:** Provide valid KYC attestation before registration.
     JurisdictionKycRequired = 11,
+
+    /// Funding exceeds jurisdiction limit.
+    ///
+    /// **When raised:** `total_funding` exceeds the `max_funding` configured
+    /// for the program's jurisdiction.
+    /// **Client action:** Reduce funding amount or update jurisdiction limits.
     JurisdictionFundingLimitExceeded = 12,
+
+    /// Registration paused for this jurisdiction.
+    ///
+    /// **When raised:** Program jurisdiction has `registration_paused` set to `true`.
+    /// **Client action:** Wait for jurisdiction to resume registration or use
+    /// a different jurisdiction.
     JurisdictionPaused = 13,
+
+    /// Invalid label format.
+    ///
+    /// **When raised:** Label is empty or exceeds `MAX_LABEL_LENGTH` (32 chars).
+    /// **Client action:** Ensure labels are 1-32 characters in length.
     InvalidLabel = 14,
+
+    /// Too many labels.
+    ///
+    /// **When raised:** Attempting to add more than `MAX_LABELS` (10) labels
+    /// to a program.
+    /// **Client action:** Reduce the number of labels to 10 or fewer.
     TooManyLabels = 15,
+
+    /// Label not in allowed list.
+    ///
+    /// **When raised:** Label configuration is restricted and the provided
+    /// label is not in the `allowed_labels` list.
+    /// **Client action:** Use an allowed label or request admin to update
+    /// the label configuration.
     LabelNotAllowed = 16,
+    // Ownership transfer errors
+    TransferProposalNotFound = 17,
 }
 
 #[contracttype]
@@ -79,6 +188,7 @@ pub enum OptionalJurisdiction {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Program {
     pub admin: Address,
+    pub payout_key: Address,
     pub name: String,
     pub total_funding: i128,
     pub status: ProgramStatus,
@@ -134,6 +244,16 @@ pub struct ProgramRegisteredEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProgramRegistryEvent {
+    pub version: u32,
+    pub program_id: u64,
+    pub admin: Address,
+    pub payout_key: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LabelConfig {
     pub restricted: bool,
     pub allowed_labels: Vec<String>,
@@ -170,6 +290,9 @@ pub enum DataKey {
     ProgramIndex,
     DeprecationState,
     LabelConfig,
+    // Ownership transfer
+    PendingAdmin,
+    ProgramPendingAdmin(u64),
 }
 
 /// Filter inputs for cursor-based program search.
@@ -496,6 +619,36 @@ impl ProgramEscrowContract {
         Ok(())
     }
 
+    /// Initialize a single program with a payout key.
+    pub fn init_program(
+        env: Env,
+        program_id: u64,
+        admin: Address,
+        payout_key: Address,
+    ) -> Result<(), Error> {
+        Self::ensure_initialized(&env)?;
+        Self::ensure_not_deprecated(&env)?;
+        Self::require_contract_admin(&env);
+
+        if env.storage().persistent().has(&DataKey::Program(program_id)) {
+            return Err(Error::ProgramExists);
+        }
+
+        // Emit registry event for discovery
+        env.events().publish(
+            (PROGRAM_REGISTRY, program_id),
+            ProgramRegistryEvent {
+                version: 1,
+                program_id,
+                admin: admin.clone(),
+                payout_key: payout_key.clone(),
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(())
+    }
+
     /// Register a single program.
     pub fn register_program(
         env: Env,
@@ -616,6 +769,7 @@ impl ProgramEscrowContract {
 
         let program = Program {
             admin: admin.clone(),
+            payout_key: admin.clone(), // Default payout_key to admin for backward compatibility
             name,
             total_funding,
             status: ProgramStatus::Active,
@@ -735,6 +889,7 @@ impl ProgramEscrowContract {
 
             let program = Program {
                 admin: item.admin.clone(),
+                payout_key: item.admin.clone(),
                 name: item.name.clone(),
                 total_funding: item.total_funding,
                 status: ProgramStatus::Active,
@@ -833,6 +988,7 @@ impl ProgramEscrowContract {
             );
             let program = Program {
                 admin: item.admin.clone(),
+                payout_key: item.admin.clone(),
                 name: item.name.clone(),
                 total_funding: item.total_funding,
                 status: ProgramStatus::Active,
@@ -939,7 +1095,9 @@ impl ProgramEscrowContract {
             restricted,
             allowed_labels: normalized.clone(),
         };
-        env.storage().persistent().set(&DataKey::LabelConfig, &config);
+        env.storage()
+            .persistent()
+            .set(&DataKey::LabelConfig, &config);
         env.events().publish(
             (LABEL_CONFIG_UPDATED,),
             LabelConfigUpdatedEvent {
@@ -1172,7 +1330,192 @@ impl ProgramEscrowContract {
     }
 }
 
+// ── Ownership transfer (two-step propose / accept) ──────────────────────────
+
+#[contractimpl]
+impl ProgramEscrowContract {
+    // ── Contract-level admin transfer ───────────────────────────────────────
+
+    /// Propose transferring contract-level admin to `new_owner`.
+    /// Only the current admin may call this. Overwrites any prior pending proposal.
+    ///
+    /// Time complexity: O(1)  Space complexity: O(1)
+    pub fn propose_transfer_ownership(env: Env, new_owner: Address) -> Result<(), Error> {
+        let admin = Self::require_contract_admin(&env);
+        Self::ensure_initialized(&env)?;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_owner);
+
+        env.events().publish(
+            (symbol_short!("own_prop"), admin),
+            (new_owner, env.ledger().timestamp()),
+        );
+        Ok(())
+    }
+
+    /// Accept a pending contract-level admin transfer.
+    /// Only the proposed new owner may call this.
+    ///
+    /// Time complexity: O(1)  Space complexity: O(1)
+    pub fn accept_transfer_ownership(env: Env) -> Result<(), Error> {
+        Self::ensure_initialized(&env)?;
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(Error::TransferProposalNotFound)?;
+        pending.require_auth();
+
+        let old_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        env.storage().instance().set(&DataKey::Admin, &pending);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        env.events().publish(
+            (symbol_short!("own_xfer"), old_admin),
+            (pending, env.ledger().timestamp()),
+        );
+        Ok(())
+    }
+
+    /// Cancel a pending contract-level admin transfer.
+    /// Only the current admin may call this.
+    ///
+    /// Time complexity: O(1)  Space complexity: O(1)
+    pub fn cancel_transfer_ownership(env: Env) -> Result<(), Error> {
+        Self::ensure_initialized(&env)?;
+        let admin = Self::require_contract_admin(&env);
+
+        if !env.storage().instance().has(&DataKey::PendingAdmin) {
+            return Err(Error::TransferProposalNotFound);
+        }
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        env.events()
+            .publish((symbol_short!("own_cncl"), admin), env.ledger().timestamp());
+        Ok(())
+    }
+
+    /// Read the pending contract-level admin, if any.
+    ///
+    /// Time complexity: O(1)  Space complexity: O(1)
+    pub fn get_pending_owner(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
+    // ── Per-program admin transfer ─────────────────────────────────────────
+
+    /// Propose transferring a program's admin to `new_admin`.
+    /// Only the current program admin may call this.
+    ///
+    /// Time complexity: O(1)  Space complexity: O(1)
+    pub fn propose_program_transfer(
+        env: Env,
+        program_id: u64,
+        new_admin: Address,
+    ) -> Result<(), Error> {
+        Self::ensure_initialized(&env)?;
+        let program: Program = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Program(program_id))
+            .ok_or(Error::ProgramNotFound)?;
+        program.admin.require_auth();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::ProgramPendingAdmin(program_id), &new_admin);
+
+        env.events().publish(
+            (symbol_short!("prg_prop"), program_id),
+            (program.admin, new_admin, env.ledger().timestamp()),
+        );
+        Ok(())
+    }
+
+    /// Accept a pending program admin transfer.
+    /// Only the proposed new admin may call this.
+    ///
+    /// Time complexity: O(1)  Space complexity: O(1)
+    pub fn accept_program_transfer(env: Env, program_id: u64) -> Result<(), Error> {
+        Self::ensure_initialized(&env)?;
+        let pending: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ProgramPendingAdmin(program_id))
+            .ok_or(Error::TransferProposalNotFound)?;
+        pending.require_auth();
+
+        let mut program: Program = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Program(program_id))
+            .ok_or(Error::ProgramNotFound)?;
+        let old_admin = program.admin.clone();
+        program.admin = pending.clone();
+        Self::store_program(&env, program_id, &program);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ProgramPendingAdmin(program_id));
+
+        env.events().publish(
+            (symbol_short!("prg_xfer"), program_id),
+            (old_admin, pending, env.ledger().timestamp()),
+        );
+        Ok(())
+    }
+
+    /// Cancel a pending program admin transfer.
+    /// Only the current program admin may call this.
+    ///
+    /// Time complexity: O(1)  Space complexity: O(1)
+    pub fn cancel_program_transfer(env: Env, program_id: u64) -> Result<(), Error> {
+        Self::ensure_initialized(&env)?;
+        let program: Program = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Program(program_id))
+            .ok_or(Error::ProgramNotFound)?;
+        program.admin.require_auth();
+
+        if !env
+            .storage()
+            .persistent()
+            .has(&DataKey::ProgramPendingAdmin(program_id))
+        {
+            return Err(Error::TransferProposalNotFound);
+        }
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ProgramPendingAdmin(program_id));
+
+        env.events().publish(
+            (symbol_short!("prg_cncl"), program_id),
+            (program.admin, env.ledger().timestamp()),
+        );
+        Ok(())
+    }
+
+    /// Read the pending admin for a specific program, if any.
+    ///
+    /// Time complexity: O(1)  Space complexity: O(1)
+    pub fn get_pending_program_admin(env: Env, program_id: u64) -> Option<Address> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ProgramPendingAdmin(program_id))
+    }
+}
+
 #[cfg(test)]
 mod test;
 #[cfg(test)]
+mod test_ownership_transfer;
+#[cfg(test)]
 mod test_search;
+#[cfg(test)]
+mod test_full_lifecycle;
+#[cfg(test)]
+mod test_max_counts;
+#[cfg(test)]
+mod test_error_discrimination;

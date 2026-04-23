@@ -16,6 +16,22 @@
 //   before the call, and subsequent single-item or batch operations behave
 //   as if the failed call never happened.
 //
+// ## Error Code Semantics
+//
+// | Condition                             | Error code           |
+// |---------------------------------------|----------------------|
+// | Batch size == 0                       | InvalidBatchSize     |
+// | Batch size > MAX_BATCH_SIZE           | InvalidBatchSize     |
+// | Same bounty_id twice in one batch     | DuplicateBountyId    |
+// | bounty_id already in persistent store | BountyExists         |
+// | amount ≤ 0                            | InvalidAmount        |
+// | bounty_id not found (release)         | BountyNotFound       |
+// | escrow not in Locked status (release) | FundsNotLocked       |
+// | lock_paused flag set                  | FundsPaused          |
+// | release_paused flag set               | FundsPaused          |
+// | contract not initialised              | NotInitialized       |
+// | contract deprecated                   | ContractDeprecated   |
+//
 // ## Coverage
 //
 //   BATCH LOCK
@@ -59,12 +75,12 @@
 
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    token, vec, Address, Env, Vec,
+    token, Address, Env, Vec,
 };
 
 use crate::{
-    BountyEscrowContract, BountyEscrowContractClient, DataKey, Error, Escrow, EscrowStatus,
-    LockFundsItem, ReleaseFundsItem,
+    BountyEscrowContract, BountyEscrowContractClient, DataKey, Error, EscrowStatus, LockFundsItem,
+    ReleaseFundsItem,
 };
 
 // ---------------------------------------------------------------------------
@@ -95,7 +111,8 @@ impl<'a> TestCtx<'a> {
         let depositor = Address::generate(&env);
         let contributor = Address::generate(&env);
 
-        let token_id = env.register_stellar_asset_contract(admin.clone());
+        let token_sac_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let token_id = token_sac_contract.address();
         let token_sac = token::StellarAssetClient::new(&env, &token_id);
 
         let contract_id = env.register_contract(None, BountyEscrowContract);
@@ -182,7 +199,7 @@ impl<'a> TestCtx<'a> {
 
     /// Assert that bounty `id` exists and has status `status`.
     fn assert_escrow_status(&self, id: u64, status: EscrowStatus) {
-        let escrow = self.client.get_escrow_info(&id);
+        let escrow = self.client.get_escrow(&id);
         assert_eq!(
             escrow.status, status,
             "bounty {id} status mismatch: expected {status:?}"
@@ -249,6 +266,8 @@ fn batch_lock_duplicate_bounty_id_in_batch_is_rejected() {
     items.push_back(ctx.lock_item(2));
     items.push_back(ctx.lock_item(1)); // duplicate
     let result = ctx.client.try_batch_lock_funds(&items);
+    // Within-batch duplicate returns DuplicateBountyId (distinct from a
+    // pre-existing storage entry which returns BountyExists).
     assert_eq!(result.unwrap_err().unwrap(), Error::DuplicateBountyId);
 }
 

@@ -44,7 +44,7 @@ mod test_claim_tickets {
         env.storage()
             .persistent()
             .get::<DataKey, ClaimTicket>(&DataKey::ClaimTicket(ticket_id))
-            .ok_or(Error::TicketNotFound)
+            .ok_or(Error::TicketInvalid)
     }
 
     fn verify_claim_ticket(env: &Env, ticket_id: u64) -> (bool, bool, bool) {
@@ -59,7 +59,12 @@ mod test_claim_tickets {
         }
     }
 
-    fn get_beneficiary_tickets(env: &Env, beneficiary: Address, start: u32, limit: u32) -> Vec<u64> {
+    fn get_beneficiary_tickets(
+        env: &Env,
+        beneficiary: Address,
+        start: u32,
+        limit: u32,
+    ) -> Vec<u64> {
         let tickets = env
             .storage()
             .persistent()
@@ -67,7 +72,11 @@ mod test_claim_tickets {
             .unwrap_or_else(|| Vec::new(env));
 
         let total = tickets.len();
-        let end = if start + limit > total { total } else { start + limit };
+        let end = if start + limit > total {
+            total
+        } else {
+            start + limit
+        };
         let mut page = Vec::new(env);
         for i in start..end {
             if let Some(ticket_id) = tickets.get(i) {
@@ -81,11 +90,11 @@ mod test_claim_tickets {
         let mut ticket = get_claim_ticket(env, ticket_id)?;
 
         if env.ledger().timestamp() >= ticket.expires_at {
-            return Err(Error::TicketExpired);
+            return Err(Error::TicketInvalid);
         }
 
         if ticket.used {
-            return Err(Error::TicketAlreadyUsed);
+            return Err(Error::TicketInvalid);
         }
 
         ticket.beneficiary.require_auth();
@@ -360,7 +369,7 @@ mod test_claim_tickets {
         let result = claim_with_ticket(env, nonexistent_ticket);
 
         assert!(
-            matches!(result, Err(Error::TicketNotFound)),
+            matches!(result, Err(Error::TicketInvalid)),
             "Should return TicketNotFound for non-existent ticket"
         );
     }
@@ -398,7 +407,7 @@ mod test_claim_tickets {
         // Second claim with same ticket should fail
         let result2 = claim_with_ticket(env, ticket_id);
         assert!(
-            matches!(result2, Err(Error::TicketAlreadyUsed)),
+            matches!(result2, Err(Error::TicketInvalid)),
             "Replaying same ticket should fail with TicketAlreadyUsed"
         );
     }
@@ -463,7 +472,7 @@ mod test_claim_tickets {
         // Attempt second claim with same ticket - should be denied
         let second_claim = claim_with_ticket(env, ticket_id);
         assert!(
-            matches!(second_claim, Err(Error::TicketAlreadyUsed)),
+            matches!(second_claim, Err(Error::TicketInvalid)),
             "Second claim with same ticket should be denied"
         );
     }
@@ -532,7 +541,7 @@ mod test_claim_tickets {
 
         let result = claim_with_ticket(env, ticket_id);
         assert!(
-            matches!(result, Err(Error::TicketExpired)),
+            matches!(result, Err(Error::TicketInvalid)),
             "Should deny claim after ticket expires"
         );
     }
@@ -565,7 +574,7 @@ mod test_claim_tickets {
 
         let result = claim_with_ticket(env, ticket_id);
         assert!(
-            matches!(result, Err(Error::TicketExpired)),
+            matches!(result, Err(Error::TicketInvalid)),
             "Should deny claim at exact expiry time (now > expires_at check)"
         );
     }
@@ -614,7 +623,7 @@ mod test_claim_tickets {
 
         let result = get_claim_ticket(env, 999u64);
         assert!(
-            matches!(result, Err(Error::TicketNotFound)),
+            matches!(result, Err(Error::TicketInvalid)),
             "Should return error for non-existent ticket"
         );
     }
@@ -861,8 +870,7 @@ mod test_claim_tickets {
             .unwrap();
 
         // 3. Verify ticket is valid
-        let (is_valid, is_expired, already_used) =
-            verify_claim_ticket(env.clone(), ticket_id);
+        let (is_valid, is_expired, already_used) = verify_claim_ticket(env.clone(), ticket_id);
         assert!(
             is_valid && !is_expired && !already_used,
             "Fresh ticket should be valid"
@@ -881,14 +889,13 @@ mod test_claim_tickets {
         );
 
         // 6. Verify ticket is marked as used
-        let (is_valid, is_expired, already_used) =
-            verify_claim_ticket(env.clone(), ticket_id);
+        let (is_valid, is_expired, already_used) = verify_claim_ticket(env.clone(), ticket_id);
         assert!(!is_valid && already_used, "Used ticket should not be valid");
 
         // 7. Attempt replay - should fail
         let replay_result = claim_with_ticket(env, ticket_id);
         assert!(
-            matches!(replay_result, Err(Error::TicketAlreadyUsed)),
+            matches!(replay_result, Err(Error::TicketInvalid)),
             "Replay should fail"
         );
     }

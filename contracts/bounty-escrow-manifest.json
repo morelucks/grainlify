@@ -1,9 +1,9 @@
 {
   "$schema": "./contract-manifest-schema.json",
   "contract_name": "BountyEscrowContract",
-  "contract_purpose": "Manages bounty escrow with multi-token support, capability-based authorization, two-step admin rotation with timelock, fee configuration, and comprehensive security features including reentrancy protection and rate limiting",
+  "contract_purpose": "Manages bounty escrow with multi-token support, capability-based authorization, two-step admin rotation with timelock, refund-eligibility views, fee configuration, and comprehensive security features including reentrancy protection and rate limiting",
   "version": {
-    "current": "2.0.0",
+    "current": "2.2.0",
     "schema": "1.0.0",
     "history": [
       {
@@ -29,6 +29,15 @@
       },
       {
         "version": "2.1.0",
+        "release_date": "2026-04-22",
+        "changes": [
+          "Added explicit refund eligibility view with deterministic semantics",
+          "Added refund approval audit events for approval set/consumption lifecycle",
+          "Added upgrade-safe storage marker for refund eligibility schema versioning"
+        ]
+      },
+      {
+        "version": "2.2.0",
         "release_date": "2026-04-23",
         "changes": [
           "Added two-step admin rotation with timelock acceptance",
@@ -451,6 +460,24 @@
         "gas_estimate": "medium"
       },
       {
+        "name": "get_refund_eligibility_view",
+        "description": "Return deterministic typed refund eligibility status, amount, and recipient preview",
+        "parameters": [
+          {
+            "name": "bounty_id",
+            "type": "u64",
+            "description": "Bounty identifier"
+          }
+        ],
+        "returns": {
+          "type": "RefundEligibilityView",
+          "description": "Eligibility state with explicit semantic code and preview fields"
+        },
+        "authorization": "any",
+        "pausable": false,
+        "gas_estimate": "low"
+      },
+      {
         "name": "health_check",
         "description": "Get contract health status",
         "parameters": [],
@@ -799,24 +826,6 @@
         "data_structure": "Address"
       },
       {
-        "name": "PendingAdmin",
-        "type": "instance",
-        "description": "Pending admin waiting for timelock acceptance",
-        "data_structure": "Address"
-      },
-      {
-        "name": "AdminTimelock",
-        "type": "instance",
-        "description": "Acceptance timestamp for the pending admin rotation",
-        "data_structure": "u64"
-      },
-      {
-        "name": "TimelockDuration",
-        "type": "instance",
-        "description": "Global admin-rotation timelock duration in seconds",
-        "data_structure": "u64"
-      },
-      {
         "name": "Escrow",
         "type": "persistent",
         "description": "Escrow records by bounty ID",
@@ -853,6 +862,30 @@
         "data_structure": "Capability"
       },
       {
+        "name": "RefundEligibilitySchemaVersion",
+        "type": "instance",
+        "description": "Version marker for refund eligibility view semantics",
+        "data_structure": "u32"
+      },
+      {
+        "name": "PendingAdmin",
+        "type": "instance",
+        "description": "Pending admin waiting for timelock acceptance",
+        "data_structure": "Address"
+      },
+      {
+        "name": "AdminTimelock",
+        "type": "instance",
+        "description": "Acceptance timestamp for the pending admin rotation",
+        "data_structure": "u64"
+      },
+      {
+        "name": "TimelockDuration",
+        "type": "instance",
+        "description": "Global admin-rotation timelock duration in seconds",
+        "data_structure": "u64"
+      },
+      {
         "name": "ReentrancyGuard",
         "type": "temporary",
         "description": "Reentrancy protection flag",
@@ -870,7 +903,8 @@
       "Anti-abuse mechanisms with whitelisting",
       "Input validation for all parameters",
       "Overflow protection in arithmetic operations",
-      "Event emission for audit trail"
+      "Event emission for audit trail",
+      "Deterministic refund eligibility view semantics"
     ],
     "access_control": [
       {
@@ -1181,6 +1215,45 @@
           }
         ],
         "trigger": "Successful set_admin_rotation_timelock_duration call"
+      },
+      {
+        "name": "RefundApprovalSet",
+        "description": "Admin refund approval created or updated",
+        "data": [
+          {
+            "name": "bounty_id",
+            "type": "u64",
+            "description": "Bounty identifier"
+          },
+          {
+            "name": "amount",
+            "type": "i128",
+            "description": "Approved refund amount"
+          },
+          {
+            "name": "recipient",
+            "type": "Address",
+            "description": "Approved refund recipient"
+          }
+        ],
+        "trigger": "Successful approve_refund call"
+      },
+      {
+        "name": "RefundApprovalConsumed",
+        "description": "Stored refund approval consumed by refund execution",
+        "data": [
+          {
+            "name": "bounty_id",
+            "type": "u64",
+            "description": "Bounty identifier"
+          },
+          {
+            "name": "refunded_amount",
+            "type": "i128",
+            "description": "Amount refunded using stored approval"
+          }
+        ],
+        "trigger": "Successful refund call with admin approval record"
       }
     ]
   },

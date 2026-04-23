@@ -64,6 +64,14 @@ pub struct InvariantReport {
 
 /// Check per-escrow sanity (INV-1).
 /// Returns `true` if the escrow passes all per-escrow invariants.
+/// Check per-escrow sanity (INV-1).
+///
+/// Returns `true` if the escrow passes all per-escrow invariants:
+/// - amount > 0
+/// - remaining_amount >= 0
+/// - remaining_amount <= amount
+/// - Released => remaining_amount == 0
+/// - Refunded => remaining_amount == 0
 pub(crate) fn check_escrow_sanity(escrow: &Escrow) -> bool {
     if escrow.amount <= 0 {
         return false;
@@ -109,6 +117,14 @@ pub(crate) fn check_anon_escrow_sanity(anon: &AnonymousEscrow) -> bool {
 
 /// Check that the sum of refund_history amounts is consistent with the
 /// amount that has been consumed (amount – remaining_amount).
+/// Check refund consistency (INV-4).
+///
+/// Returns `true` if the sum of refund_history amounts is consistent with
+/// the amount that has been consumed (amount – remaining_amount).
+///
+/// The invariant ensures:
+/// - All refund records have positive amounts
+/// - Total refunded <= consumed amount
 pub(crate) fn check_refund_consistency(escrow: &Escrow) -> bool {
     let mut total_refunded: i128 = 0;
     for record in escrow.refund_history.iter() {
@@ -142,6 +158,12 @@ pub(crate) fn check_anon_refund_consistency(anon: &AnonymousEscrow) -> bool {
 
 /// Sum the remaining_amount of all active (Locked or PartiallyRefunded) escrows,
 /// including both normal Escrow and AnonymousEscrow.
+/// Sum the remaining_amount of all active escrows (INV-2).
+///
+/// Active escrows are those with status Locked or PartiallyRefunded.
+/// This includes both normal Escrow and AnonymousEscrow.
+///
+/// Used to verify aggregate-to-ledger invariant.
 pub(crate) fn sum_active_escrow_balances(env: &Env) -> i128 {
     let index: Vec<u64> = env
         .storage()
@@ -176,6 +198,9 @@ pub(crate) fn sum_active_escrow_balances(env: &Env) -> i128 {
 }
 
 /// Get the actual token balance held by the contract.
+/// Get the actual token balance held by the contract.
+///
+/// Used to verify aggregate-to-ledger invariant (INV-2).
 pub(crate) fn get_contract_token_balance(env: &Env) -> i128 {
     let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
     let client = token::Client::new(env, &token_addr);
@@ -187,6 +212,10 @@ pub(crate) fn get_contract_token_balance(env: &Env) -> i128 {
 // ---------------------------------------------------------------------------
 
 /// Count how many bounty_ids in the global index have no corresponding Escrow or EscrowAnon.
+/// Count orphaned index entries (INV-5).
+///
+/// Returns the number of bounty_ids in the global index that have
+/// no corresponding Escrow or EscrowAnon entry.
 pub(crate) fn count_orphaned_index_entries(env: &Env) -> u32 {
     let index: Vec<u64> = env
         .storage()
@@ -217,6 +246,15 @@ pub(crate) fn count_orphaned_index_entries(env: &Env) -> u32 {
 /// This is intended to be called from:
 /// - An on-chain `verify_all_invariants()` view function
 /// - Tests that want to assert full system health
+/// Run ALL invariant checks and return a comprehensive report.
+///
+/// Checks:
+/// - INV-1: Per-escrow sanity
+/// - INV-2: Aggregate-to-ledger balance
+/// - INV-4: Refund consistency
+/// - INV-5: Index completeness
+///
+/// Returns an InvariantReport with detailed violation information.
 pub(crate) fn check_all_invariants(env: &Env) -> InvariantReport {
     let mut violations: Vec<soroban_sdk::String> = Vec::new(env);
     let mut per_escrow_failures: u32 = 0;
@@ -307,6 +345,10 @@ pub(crate) fn check_all_invariants(env: &Env) -> InvariantReport {
 /// Panic with a descriptive message if any invariant is violated.
 /// Called from critical paths (lock, release, refund) after state mutation.
 #[allow(dead_code)]
+/// Panic if any invariant is violated.
+///
+/// Called from critical paths (lock, release, refund) after state mutation.
+/// Uses check_all_invariants internally.
 pub(crate) fn assert_all_invariants(env: &Env) {
     let report = check_all_invariants(env);
     if !report.healthy {
@@ -322,6 +364,10 @@ pub(crate) fn assert_all_invariants(env: &Env) {
 // ---------------------------------------------------------------------------
 
 /// Assert after a lock: aggregate balance must equal token balance.
+/// Assert after a lock: aggregate balance must equal token balance (INV-2).
+///
+/// Lightweight check for hot paths — only asserts the aggregate-to-ledger
+/// invariant that is most relevant to the lock operation.
 pub(crate) fn assert_after_lock(env: &Env) {
     let key = soroban_sdk::Symbol::new(env, "InvOff");
     let disabled: bool = env.storage().instance().get(&key).unwrap_or(false);
@@ -340,6 +386,10 @@ pub(crate) fn assert_after_lock(env: &Env) {
 }
 
 /// Assert after a release/refund: aggregate balance must equal token balance.
+/// Assert after a release/refund: aggregate balance must equal token balance (INV-2).
+///
+/// Lightweight check for hot paths — only asserts the aggregate-to-ledger
+/// invariant that is most relevant to disbursement operations.
 pub(crate) fn assert_after_disbursement(env: &Env) {
     let key = soroban_sdk::Symbol::new(env, "InvOff");
     let disabled: bool = env.storage().instance().get(&key).unwrap_or(false);

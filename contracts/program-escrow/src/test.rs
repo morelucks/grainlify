@@ -26,7 +26,15 @@ fn setup_program(
     let token_admin_client = token::StellarAssetClient::new(env, &token_id);
 
     let program_id = String::from_str(env, "hack-2026");
-    client.init_program(&program_id, &admin, &token_id, &admin, &None, &None);
+    client.init_program(
+        &program_id,
+        &admin,
+        &token_id,
+        &admin,
+        &None,
+        &None,
+    );
+    client.publish_program();
 
     if initial_amount > 0 {
         token_admin_client.mint(&client.address, &initial_amount);
@@ -396,6 +404,7 @@ fn test_full_lifecycle_multi_program_batch_payouts() {
         &None,
         &None,
     );
+    client_a.publish_program();
     assert_eq!(prog_a.total_funds, 0);
     assert_eq!(prog_a.remaining_balance, 0);
 
@@ -412,6 +421,7 @@ fn test_full_lifecycle_multi_program_batch_payouts() {
         &None,
         &None,
     );
+    client_b.publish_program();
     assert_eq!(prog_b.total_funds, 0);
 
     // ── Phase 1: Lock funds in multiple steps ───────────────────────────
@@ -589,6 +599,7 @@ fn test_multi_token_balance_accounting_isolated_across_program_instances() {
         &None,
         &None,
     );
+    client_a.publish_program();
     client_b.init_program(
         &String::from_str(&env, "multi-token-b"),
         &payout_key_b,
@@ -597,6 +608,7 @@ fn test_multi_token_balance_accounting_isolated_across_program_instances() {
         &None,
         &None,
     );
+    client_b.publish_program();
 
     token_admin_client_a.mint(&client_a.address, &500_000);
     token_admin_client_b.mint(&client_b.address, &300_000);
@@ -678,10 +690,10 @@ fn test_admin_rotation() {
     env.mock_all_auths();
 
     client.set_admin(&admin);
-    assert_eq!(client.get_admin(), Some(admin.clone()));
+    assert_eq!(client.get_program_admin(), Some(admin.clone()));
 
     client.set_admin(&new_admin);
-    assert_eq!(client.get_admin(), Some(new_admin));
+    assert_eq!(client.get_program_admin(), Some(new_admin));
 }
 
 /// After admin rotation, new admin can update rate limit config.
@@ -774,7 +786,7 @@ fn test_batch_initialize_programs_empty_err() {
     let client = ProgramEscrowContractClient::new(&env, &contract_id);
     let items: Vec<ProgramInitItem> = Vec::new(&env);
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(BatchError::InvalidBatchSize))));
+    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::InvalidBatchSize))));
 }
 
 #[test]
@@ -799,7 +811,7 @@ fn test_batch_initialize_programs_duplicate_id_err() {
         reference_hash: None,
     });
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(BatchError::DuplicateProgramId))));
+    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::DuplicateEntry))));
 }
 
 // =============================================================================
@@ -894,7 +906,7 @@ fn test_batch_register_exceeds_max_batch_size() {
     }
 
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(BatchError::InvalidBatchSize))));
+    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::InvalidBatchSize))));
 }
 
 #[test]
@@ -964,7 +976,7 @@ fn test_batch_register_program_already_exists_error() {
     });
 
     let res = client.try_batch_initialize_programs(&second);
-    assert!(matches!(res, Err(Ok(BatchError::ProgramAlreadyExists))));
+    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::ProgramAlreadyExists))));
 
     // "brand-new" must NOT exist — all-or-nothing semantics
     assert!(!client.program_exists_by_id(&String::from_str(&env, "brand-new")));
@@ -1000,7 +1012,7 @@ fn test_batch_register_all_or_nothing_on_duplicate() {
     });
 
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(BatchError::DuplicateProgramId))));
+    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::DuplicateEntry))));
 
     // Neither program should exist
     assert!(!client.program_exists_by_id(&String::from_str(&env, "alpha")));
@@ -1036,7 +1048,7 @@ fn test_batch_register_duplicate_at_tail() {
     });
 
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(BatchError::DuplicateProgramId))));
+    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::DuplicateEntry))));
 }
 
 #[test]
@@ -1211,7 +1223,7 @@ fn test_batch_register_second_batch_conflicts_with_first() {
     });
 
     let res = client.try_batch_initialize_programs(&batch2);
-    assert!(matches!(res, Err(Ok(BatchError::ProgramAlreadyExists))));
+    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::ProgramAlreadyExists))));
 
     // "fresh" must not exist (all-or-nothing)
     assert!(!client.program_exists_by_id(&String::from_str(&env, "fresh")));
@@ -1298,6 +1310,7 @@ fn test_multi_tenant_no_cross_program_balance_or_analytics() {
         &None,
         &None,
     );
+    client_a.publish_program();
     client_b.init_program(
         &String::from_str(&env, "prog-isolation-b"),
         &admin_b,
@@ -1306,6 +1319,7 @@ fn test_multi_tenant_no_cross_program_balance_or_analytics() {
         &None,
         &None,
     );
+    client_b.publish_program();
 
     token_sac.mint(&client_a.address, &500_000);
     token_sac.mint(&client_b.address, &300_000);
@@ -1925,6 +1939,57 @@ fn test_batch_payout_atomicity_all_or_nothing() {
 }
 
 #[test]
+fn test_spend_threshold_single_payout_at_boundary_allowed() {
+    let env = Env::default();
+    let (client, _admin, token_client, _token_admin) = setup_program(&env, 50_000);
+    let program_id = String::from_str(&env, "hack-2026");
+
+    client.set_program_spend_threshold(&program_id, &10_000);
+
+    let recipient = Address::generate(&env);
+    let data = client.single_payout(&recipient, &10_000);
+
+    assert_eq!(data.remaining_balance, 40_000);
+    assert_eq!(token_client.balance(&recipient), 10_000);
+}
+
+#[test]
+#[should_panic(expected = "Spend threshold exceeded")]
+fn test_spend_threshold_single_payout_above_limit_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token_client, _token_admin) = setup_program(&env, 50_000);
+    let program_id = String::from_str(&env, "hack-2026");
+
+    client.set_program_spend_threshold(&program_id, &10_000);
+
+    let recipient = Address::generate(&env);
+    client.single_payout(&recipient, &10_001);
+}
+
+#[test]
+#[should_panic(expected = "Spend threshold exceeded")]
+fn test_spend_threshold_batch_total_above_limit_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token_client, _token_admin) = setup_program(&env, 50_000);
+    let program_id = String::from_str(&env, "hack-2026");
+
+    client.set_program_spend_threshold(&program_id, &10_000);
+
+    let recipients = vec![&env, Address::generate(&env), Address::generate(&env)];
+    let amounts = vec![&env, 6_000, 5_000];
+    client.batch_payout(&recipients, &amounts);
+}
+
+#[test]
+#[should_panic(expected = "Invalid spend threshold")]
+fn test_spend_threshold_must_be_positive() {
+    let env = Env::default();
+    let (client, _admin, _token_client, _token_admin) = setup_program(&env, 1_000);
+    let program_id = String::from_str(&env, "hack-2026");
+    client.set_program_spend_threshold(&program_id, &0);
+}
+
+#[test]
 fn test_batch_payout_sequential_batches() {
     // Test multiple sequential batch payouts to same program
     // Validates that history accumulates correctly
@@ -2120,6 +2185,43 @@ fn test_query_payouts_pagination_offset_and_limit() {
 }
 
 #[test]
+#[should_panic(expected = "Pagination limit must be greater than zero")]
+fn test_query_payouts_pagination_limit_zero_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 100_000);
+    let r1 = Address::generate(&env);
+    client.single_payout(&r1, &10_000);
+    let _ = client.query_payouts_by_recipient(&r1, &0, &0);
+}
+
+#[test]
+#[should_panic(expected = "Pagination limit exceeds maximum")]
+fn test_query_payouts_pagination_limit_above_max_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 100_000);
+    let r1 = Address::generate(&env);
+    client.single_payout(&r1, &10_000);
+    let _ = client.query_payouts_by_recipient(&r1, &0, &201);
+}
+
+#[test]
+#[should_panic(expected = "Invalid amount range")]
+fn test_query_payouts_by_amount_invalid_range_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 100_000);
+    let _ = client.query_payouts_by_amount(&1000, &100, &0, &10);
+}
+
+#[test]
+#[should_panic(expected = "Invalid timestamp range")]
+fn test_query_payouts_by_timestamp_invalid_range_rejected() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 100_000);
+    let now = env.ledger().timestamp();
+    let _ = client.query_payouts_by_timestamp(&(now + 10), &now, &0, &10);
+}
+
+#[test]
 fn test_query_schedules_by_status_pending_vs_released() {
     let env = Env::default();
     let (client, _admin, _token, _token_admin) = setup_program(&env, 200_000);
@@ -2239,6 +2341,88 @@ fn test_release_schedules_persist_after_simulated_upgrade() {
     assert_eq!(stats_final.released_count, 2);
     assert_eq!(stats_final.scheduled_count, 0);
     assert_eq!(stats_final.remaining_balance, 100_000);
+}
+
+#[test]
+fn test_release_schedules_timestamps_and_manual_release_after_simulated_upgrade() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 300_000);
+
+    let now = env.ledger().timestamp();
+    let r1 = Address::generate(&env);
+    let r2 = Address::generate(&env);
+
+    let s1 = client.create_program_release_schedule(&r1, &100_000, &(now + 100));
+    let s2 = client.create_program_release_schedule(&r2, &150_000, &(now + 200));
+
+    let schedules_before = client.get_all_prog_release_schedules();
+    assert_eq!(schedules_before.len(), 2);
+    assert_eq!(schedules_before.get(0).unwrap().release_timestamp, now + 100);
+    assert_eq!(schedules_before.get(1).unwrap().release_timestamp, now + 200);
+    assert!(!schedules_before.get(0).unwrap().released);
+    assert!(!schedules_before.get(1).unwrap().released);
+
+    // Simulated upgrade (no re-init, state is preserved)
+    env.ledger().set_timestamp(now + 150);
+    let released_count = client.trigger_program_releases();
+    assert_eq!(released_count, 1);
+
+    let schedules_mid = client.get_all_prog_release_schedules();
+    assert_eq!(schedules_mid.len(), 2);
+    let mid_s1 = schedules_mid.iter().find(|s| s.schedule_id == s1.schedule_id).unwrap();
+    let mid_s2 = schedules_mid.iter().find(|s| s.schedule_id == s2.schedule_id).unwrap();
+    assert!(mid_s1.released);
+    assert_eq!(mid_s1.release_timestamp, now + 100);
+    assert!(!mid_s2.released);
+    assert_eq!(mid_s2.release_timestamp, now + 200);
+
+    // Manual release should succeed after upgrade even if schedule timestamp is in future.
+    client.release_program_schedule_manual(&s2.schedule_id);
+
+    let stats_after_manual = client.get_program_aggregate_stats();
+    assert_eq!(stats_after_manual.released_count, 2);
+    assert_eq!(stats_after_manual.scheduled_count, 0);
+    assert_eq!(stats_after_manual.remaining_balance, 50_000);
+
+    let schedules_final = client.get_all_prog_release_schedules();
+    let final_s2 = schedules_final.iter().find(|s| s.schedule_id == s2.schedule_id).unwrap();
+    assert!(final_s2.released);
+    assert_eq!(final_s2.release_timestamp, now + 200);
+}
+
+#[test]
+fn test_release_schedules_work_after_v2_program_state_migration() {
+    let env = Env::default();
+    let (client, _admin, _token, _token_admin) = setup_program(&env, 400_000);
+
+    let program_id = String::from_str(&env, "hack-2026");
+    let now = env.ledger().timestamp();
+    let recipient = Address::generate(&env);
+
+    client.create_program_release_schedule(&recipient, &100_000, &(now + 100));
+
+    let prog_v2_before = client.get_program_info();
+    assert_eq!(prog_v2_before.remaining_balance, 400_000);
+
+    env.ledger().set_timestamp(now + 200);
+    let released = client.trigger_program_releases();
+    assert_eq!(released, 1);
+
+    let schedule = client
+        .get_all_prog_release_schedules()
+        .iter()
+        .find(|s| s.schedule_id == 1)
+        .unwrap();
+    assert!(schedule.released);
+    assert_eq!(schedule.release_timestamp, now + 100);
+
+    let history = client.get_program_release_history();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history.get(0).unwrap().schedule_id, 1);
+
+    let prog_v2_after = client.get_program_info();
+    assert_eq!(prog_v2_after.remaining_balance, 300_000);
+    assert_eq!(prog_v2_after.payout_history.len(), 1);
 }
 
 #[test]

@@ -28,6 +28,24 @@
           "Improved fee configuration",
           "Added granular pause controls"
         ]
+      },
+      {
+        "version": "2.1.0",
+        "release_date": "2026-04-22",
+        "changes": [
+          "Added deterministic spend-threshold enforcement for single and batch payouts",
+          "Added explicit spend-threshold configuration and retrieval entrypoints",
+          "Reused per-program persistent config storage for upgrade-safe threshold state"
+        ]
+      },
+      {
+        "version": "2.2.0",
+        "release_date": "2026-04-22",
+        "changes": [
+          "Hardened history pagination with deterministic limit validation and explicit range errors",
+          "Centralized pagination behavior across payout, schedule, and release history queries",
+          "Added upgrade-safe pagination config storage with backward-compatible defaults"
+        ]
       }
     ]
   },
@@ -188,6 +206,29 @@
         "authorization": "admin",
         "pausable": true,
         "gas_estimate": "medium"
+      },
+      {
+        "name": "set_program_spend_threshold",
+        "description": "Set per-program maximum spend for a single payout operation (single amount or batch total)",
+        "parameters": [
+          {
+            "name": "program_id",
+            "type": "String",
+            "description": "Program identifier"
+          },
+          {
+            "name": "threshold_amount",
+            "type": "i128",
+            "description": "Maximum allowed gross spend per payout operation"
+          }
+        ],
+        "returns": {
+          "type": "()",
+          "description": "Empty on success"
+        },
+        "authorization": "admin",
+        "pausable": false,
+        "gas_estimate": "low"
       },
       {
         "name": "set_program_dependencies",
@@ -383,6 +424,24 @@
         "returns": {
           "type": "PauseFlags",
           "description": "Pause configuration"
+        },
+        "authorization": "any",
+        "pausable": false,
+        "gas_estimate": "low"
+      },
+      {
+        "name": "get_program_spend_threshold",
+        "description": "Get the configured per-program spend threshold",
+        "parameters": [
+          {
+            "name": "program_id",
+            "type": "String",
+            "description": "Program identifier"
+          }
+        ],
+        "returns": {
+          "type": "i128",
+          "description": "Maximum allowed gross spend per payout operation"
         },
         "authorization": "any",
         "pausable": false,
@@ -715,6 +774,12 @@
         "data_structure": "PauseFlags"
       },
       {
+        "name": "DataKey::HistoryPaginationConfig",
+        "type": "instance",
+        "description": "History pagination configuration",
+        "data_structure": "HistoryPaginationConfig"
+      },
+      {
         "name": "SCHEDULES",
         "type": "instance",
         "description": "Release schedules",
@@ -732,7 +797,9 @@
       "Reentrancy protection",
       "Comprehensive monitoring and analytics",
       "Input validation for all parameters",
-      "Overflow protection in arithmetic operations"
+      "Overflow protection in arithmetic operations",
+      "Deterministic spend-threshold checks for payout operations",
+      "Deterministic history pagination checks with explicit validation failures"
     ],
     "access_control": [
       {
