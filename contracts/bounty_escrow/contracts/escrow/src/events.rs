@@ -93,6 +93,73 @@ pub fn emit_bounty_initialized(env: &Env, event: BountyEscrowInitialized) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ADMIN ROTATION EVENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Emitted when the current admin schedules a two-step rotation.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminRotationProposed {
+    pub version: u32,
+    pub current_admin: Address,
+    pub pending_admin: Address,
+    pub timelock_duration: u64,
+    pub execute_after: u64,
+    pub timestamp: u64,
+}
+
+pub fn emit_admin_rotation_proposed(env: &Env, event: AdminRotationProposed) {
+    let topics = (symbol_short!("admrotp"),);
+    env.events().publish(topics, event);
+}
+
+/// Emitted when the pending admin accepts and becomes the new admin.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminRotationAccepted {
+    pub version: u32,
+    pub previous_admin: Address,
+    pub new_admin: Address,
+    pub timestamp: u64,
+}
+
+pub fn emit_admin_rotation_accepted(env: &Env, event: AdminRotationAccepted) {
+    let topics = (symbol_short!("admrota"),);
+    env.events().publish(topics, event);
+}
+
+/// Emitted when the current admin clears a pending rotation before acceptance.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminRotationCancelled {
+    pub version: u32,
+    pub admin: Address,
+    pub cancelled_pending_admin: Address,
+    pub timestamp: u64,
+}
+
+pub fn emit_admin_rotation_cancelled(env: &Env, event: AdminRotationCancelled) {
+    let topics = (symbol_short!("admrotc"),);
+    env.events().publish(topics, event);
+}
+
+/// Emitted when the configured admin-rotation timelock duration changes.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminRotationTimelockUpdated {
+    pub version: u32,
+    pub admin: Address,
+    pub previous_duration: u64,
+    pub new_duration: u64,
+    pub timestamp: u64,
+}
+
+pub fn emit_admin_rotation_timelock_updated(env: &Env, event: AdminRotationTimelockUpdated) {
+    let topics = (symbol_short!("admtlcfg"),);
+    env.events().publish(topics, event);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // FUNDS LOCK , RELEASE and  REFUND EVENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
