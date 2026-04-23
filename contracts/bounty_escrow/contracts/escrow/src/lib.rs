@@ -3442,6 +3442,7 @@ impl BountyEscrowContract {
     /// # Security
     /// Reentrancy guard is always cleared before any explicit error return after acquisition.
     pub fn release_funds(env: Env, bounty_id: u64, contributor: Address) -> Result<(), Error> {
+        Self::validate_claim_window(env.clone(), bounty_id)?;
         let caller = env
             .storage()
             .instance()
@@ -3824,6 +3825,7 @@ impl BountyEscrowContract {
     /// # Front-running Behavior
     /// Claim is single-use: once marked claimed and escrow is released, subsequent calls fail.
     pub fn claim(env: Env, bounty_id: u64) -> Result<(), Error> {
+        Self::validate_claim_window(env.clone(), bounty_id)?;
         // GUARD: acquire reentrancy lock
         reentrancy_guard::acquire(&env);
 
@@ -5722,6 +5724,7 @@ impl traits::EscrowInterface for BountyEscrowContract {
 
     /// Release funds to contributor through the trait interface
     fn release_funds(env: &Env, bounty_id: u64, contributor: Address) -> Result<(), crate::Error> {
+        Self::validate_claim_window(env.clone(), bounty_id)?;
         let entrypoint: fn(Env, u64, Address) -> Result<(), crate::Error> =
             BountyEscrowContract::release_funds;
         entrypoint(env.clone(), bounty_id, contributor)
