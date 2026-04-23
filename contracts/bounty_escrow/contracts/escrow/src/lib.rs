@@ -1849,11 +1849,14 @@ impl BountyEscrowContract {
 
     /// Check if an operation is paused
     fn check_paused(env: &Env, operation: Symbol) -> bool {
+        // HARDENING: Maintenance mode supersedes granular pause flags
+        // and halts ALL state-mutating operations globally.
+        if Self::is_maintenance_mode(env.clone()) {
+            return true;
+        }
+
         let flags = Self::get_pause_flags(env);
         if operation == symbol_short!("lock") {
-            if Self::is_maintenance_mode(env.clone()) {
-                return true;
-            }
             return flags.lock_paused;
         } else if operation == symbol_short!("release") {
             return flags.release_paused;
@@ -1992,7 +1995,11 @@ impl BountyEscrowContract {
     }
 
     /// Update maintenance mode (admin only)
-    pub fn set_maintenance_mode(env: Env, enabled: bool) -> Result<(), Error> {
+    pub fn set_maintenance_mode(
+        env: Env, 
+        enabled: bool, 
+        reason: Option<soroban_sdk::String>
+    ) -> Result<(), Error> {
         if !env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::NotInitialized);
         }
@@ -2022,8 +2029,9 @@ impl BountyEscrowContract {
 
         events::emit_maintenance_mode_changed(
             &env,
-            MaintenanceModeChanged {
+            events::MaintenanceModeChanged {
                 enabled,
+                reason,
                 admin: admin.clone(),
                 timestamp: env.ledger().timestamp(),
             },
