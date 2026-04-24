@@ -690,10 +690,10 @@ fn test_admin_rotation() {
     env.mock_all_auths();
 
     client.set_admin(&admin);
-    assert_eq!(client.get_program_admin(), Some(admin.clone()));
+    assert_eq!(client.get_admin(), Some(admin.clone()));
 
     client.set_admin(&new_admin);
-    assert_eq!(client.get_program_admin(), Some(new_admin));
+    assert_eq!(client.get_admin(), Some(new_admin));
 }
 
 /// After admin rotation, new admin can update rate limit config.
@@ -786,7 +786,7 @@ fn test_batch_initialize_programs_empty_err() {
     let client = ProgramEscrowContractClient::new(&env, &contract_id);
     let items: Vec<ProgramInitItem> = Vec::new(&env);
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::InvalidBatchSize))));
+    assert!(matches!(res, Err(Ok(BatchError::InvalidBatchSizeProgram))));
 }
 
 #[test]
@@ -811,7 +811,7 @@ fn test_batch_initialize_programs_duplicate_id_err() {
         reference_hash: None,
     });
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::DuplicateEntry))));
+    assert!(matches!(res, Err(Ok(BatchError::DuplicateProgramId))));
 }
 
 // =============================================================================
@@ -906,7 +906,7 @@ fn test_batch_register_exceeds_max_batch_size() {
     }
 
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::InvalidBatchSize))));
+    assert!(matches!(res, Err(Ok(BatchError::InvalidBatchSizeProgram))));
 }
 
 #[test]
@@ -976,7 +976,7 @@ fn test_batch_register_program_already_exists_error() {
     });
 
     let res = client.try_batch_initialize_programs(&second);
-    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::ProgramAlreadyExists))));
+    assert!(matches!(res, Err(Ok(BatchError::ProgramAlreadyExists))));
 
     // "brand-new" must NOT exist — all-or-nothing semantics
     assert!(!client.program_exists_by_id(&String::from_str(&env, "brand-new")));
@@ -1012,7 +1012,7 @@ fn test_batch_register_all_or_nothing_on_duplicate() {
     });
 
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::DuplicateEntry))));
+    assert!(matches!(res, Err(Ok(BatchError::DuplicateProgramId))));
 
     // Neither program should exist
     assert!(!client.program_exists_by_id(&String::from_str(&env, "alpha")));
@@ -1048,7 +1048,7 @@ fn test_batch_register_duplicate_at_tail() {
     });
 
     let res = client.try_batch_initialize_programs(&items);
-    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::DuplicateEntry))));
+    assert!(matches!(res, Err(Ok(BatchError::DuplicateProgramId))));
 }
 
 #[test]
@@ -1223,7 +1223,7 @@ fn test_batch_register_second_batch_conflicts_with_first() {
     });
 
     let res = client.try_batch_initialize_programs(&batch2);
-    assert!(matches!(res, Err(Ok(grainlify_core::errors::ContractError::ProgramAlreadyExists))));
+    assert!(matches!(res, Err(Ok(BatchError::ProgramAlreadyExists))));
 
     // "fresh" must not exist (all-or-nothing)
     assert!(!client.program_exists_by_id(&String::from_str(&env, "fresh")));
@@ -2910,7 +2910,7 @@ fn test_pause_state_changed_v2_event_on_pause() {
     assert!(v2_event.is_some(), "PauseStateChangedV2 event must be emitted");
 
     let event = v2_event.unwrap();
-    let data: PauseStateChangedV2 = event.2.try_into_val(&env).unwrap();
+    let data: PauseStateChangedV2 = <PauseStateChangedV2 as soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>>::try_from_val(&env, &event.2).unwrap();
 
     assert_eq!(data.version, EVENT_VERSION_V2);
     assert_eq!(data.operation, symbol_short!("release"));
@@ -2935,23 +2935,21 @@ fn test_pause_state_changed_v2_previous_paused_on_unpause() {
 
     let events = env.events().all();
     // Get the last PauseStateChangedV2 event (the unpause one)
-    let v2_events: Vec<_> = events
-        .iter()
-        .filter(|e| {
-            let topics = e.1.clone();
-            if let Some(t0) = topics.get(0) {
-                let sym: Symbol = t0.into_val(&env);
-                sym == Symbol::new(&env, "PauseStV2")
-            } else {
-                false
+    let mut v2_events = soroban_sdk::Vec::new(&env);
+    for e in events.iter() {
+        let topics = e.1.clone();
+        if let Some(t0) = topics.get(0) {
+            let sym: Symbol = t0.into_val(&env);
+            if sym == Symbol::new(&env, "PauseStV2") {
+                v2_events.push_back(e.2.clone());
             }
-        })
-        .collect();
+        }
+    }
 
     assert!(v2_events.len() >= 2, "Should have at least 2 PauseStateChangedV2 events");
 
-    let unpause_event = v2_events.last().unwrap();
-    let data: PauseStateChangedV2 = unpause_event.2.try_into_val(&env).unwrap();
+    let last_val = v2_events.get(v2_events.len() - 1).unwrap();
+    let data: PauseStateChangedV2 = <PauseStateChangedV2 as soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>>::try_from_val(&env, &last_val).unwrap();
 
     assert_eq!(data.previous_paused, true, "previous_paused must be true when unpausing");
     assert_eq!(data.paused, false);
