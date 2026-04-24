@@ -64,6 +64,7 @@ pub enum ContractError {
 #[cfg(feature = "contract")]
 const VERSION: u32 = 2;
 pub const STORAGE_SCHEMA_VERSION: u32 = 1;
+pub const LIVENESS_SCHEMA_VERSION: u32 = 1;
 const CONFIG_SNAPSHOT_LIMIT: u32 = 20;
 
 /// Default timelock delay for upgrade execution (24 hours in seconds)
@@ -266,6 +267,19 @@ pub struct WatchdogStatus {
     pub healthy: bool,
     pub last_ping_ts: u64,
     pub version: u32,
+}
+
+/// Liveness snapshot returned by `liveness_watchdog`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LivenessStatus {
+    pub is_paused: bool,
+    pub is_read_only: bool,
+    pub is_operational: bool,
+    pub version: u32,
+    pub admin_set: bool,
+    pub timestamp: u64,
+    pub schema_version: u32,
 }
 
 /// Storage keys for contract data.
@@ -736,6 +750,7 @@ impl GrainlifyContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Version, &VERSION);
         env.storage().instance().set(&DataKey::ReadOnlyMode, &false);
+        env.storage().instance().set(&DataKey::LivenessSchemaVersion, &LIVENESS_SCHEMA_VERSION);
         
         // Emit BuildInfo event for initialization tracking and auditing
         env.events().publish(
@@ -1373,38 +1388,6 @@ impl GrainlifyContract {
     // ========================================================================
     // Liveness Watchdog
     // ========================================================================
-
-    /// View: returns a consolidated liveness snapshot — no auth required.
-    ///
-    /// Aggregates pause state, read-only mode, monitoring health, last ping
-    /// timestamp, and current version into a single `WatchdogStatus` struct.
-    /// Safe to call at any time; never panics.
-    ///
-    /// # Security Notes
-    /// - Pure read — no state mutations, no auth required.
-    /// - Callers MUST NOT use this as a sole gate for critical operations;
-    ///   individual guards (`require_not_read_only`, `is_paused`) remain
-    ///   authoritative for mutation paths.
-    pub fn liveness_watchdog(env: Env) -> WatchdogStatus {
-        let paused = MultiSig::is_contract_paused(&env);
-        let read_only: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::ReadOnlyMode)
-            .unwrap_or(false);
-        let healthy = monitoring::check_invariants(&env).healthy;
-        let last_ping_ts: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::WatchdogLastPing)
-            .unwrap_or(0);
-        let version: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Version)
-            .unwrap_or(0);
-        WatchdogStatus { paused, read_only, healthy, last_ping_ts, version }
-    }
 
     /// Admin: record a liveness ping — updates `WatchdogLastPing` timestamp.
     ///

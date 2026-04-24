@@ -174,7 +174,7 @@ fn test_build_info_event_requires_admin_auth() {
     client.init_admin(&admin);
 
     let events = env.events().all();
-    let build_info_events: Vec<_> = events
+    let build_info_events: std::vec::Vec<_> = events
         .iter()
         .filter(|event| {
             let topics = &event.topics;
@@ -215,7 +215,7 @@ fn test_build_info_event_with_different_admins() {
     env.mock_all_auths();
 
     // Test with multiple different admin addresses
-    let admins = vec![
+    let admins = std::vec![
         Address::generate(&env),
         Address::generate(&env),
         Address::generate(&env),
@@ -228,7 +228,7 @@ fn test_build_info_event_with_different_admins() {
         client.init_admin(&admin);
 
         let events = env.events().all();
-        let build_info_events: Vec<_> = events
+        let build_info_events: std::vec::Vec<_> = events
             .iter()
             .filter(|event| {
                 let topics = &event.topics;
