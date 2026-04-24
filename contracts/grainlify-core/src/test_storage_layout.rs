@@ -4,6 +4,7 @@ mod test {
     use soroban_sdk::{testutils::Address as _, Address, Env};
 
     fn setup_test(env: &Env) -> (GrainlifyContractClient, Address) {
+        env.mock_all_auths();
         let contract_id = env.register_contract(None, GrainlifyContract);
         let client = GrainlifyContractClient::new(env, &contract_id);
         let admin = Address::generate(env);

@@ -24,6 +24,8 @@ mod traits;
 pub mod upgrade_safety;
 
 #[cfg(test)]
+mod test_filter_pagination;
+#[cfg(test)]
 mod test_frozen_balance;
 #[cfg(test)]
 mod test_reentrancy_guard;
@@ -33,12 +35,14 @@ use crate::events::{
     emit_deprecation_state_changed, emit_deterministic_selection, emit_funds_locked,
     emit_funds_locked_anon, emit_funds_refunded, emit_funds_released,
     emit_maintenance_mode_changed, emit_notification_preferences_updated,
-    emit_participant_filter_mode_changed, emit_refund_approval_consumed, emit_refund_approval_set,
+    emit_participant_filter_mode_changed, emit_participant_filter_queried,
+    emit_refund_approval_consumed, emit_refund_approval_set,
     emit_risk_flags_updated, emit_ticket_claimed, emit_ticket_issued, BatchFundsLocked,
     BatchFundsReleased, BountyEscrowInitialized, ClaimCancelled, ClaimCreated, ClaimExecuted,
     CriticalOperationOutcome, DeprecationStateChanged, DeterministicSelectionDerived, FundsLocked,
     FundsLockedAnon, FundsRefunded, FundsReleased, MaintenanceModeChanged, MaintenanceModeChangedV2,
-    NotificationPreferencesUpdated, ParticipantFilterModeChanged, RefundApprovalConsumed,
+    NotificationPreferencesUpdated, ParticipantFilterModeChanged, ParticipantFilterQueried,
+    RefundApprovalConsumed,
     RefundApprovalSet, RefundTriggerType, RiskFlagsUpdated, TicketClaimed, TicketIssued,
     EVENT_VERSION_V2,
     emit_claim_window_set, emit_claim_window_validated, emit_claim_window_expired,
@@ -703,6 +707,19 @@ pub enum ParticipantFilterMode {
     AllowlistOnly = 2,
 }
 
+/// Paginated result from `query_whitelist` / `query_blocklist`.
+///
+/// `has_more` is `true` when the underlying list extends beyond `offset + items.len()`,
+/// letting callers detect the end of the list without a separate count query.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ParticipantListPage {
+    pub items: Vec<Address>,
+    pub total: u32,
+    pub offset: u32,
+    pub has_more: bool,
+}
+
 /// Kill-switch state: when deprecated is true, new escrows are blocked; existing escrows can complete or migrate.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -864,6 +881,9 @@ pub enum DataKey {
     FeeRoutingSchemaVersion,
     /// Runtime-configurable batch size caps for lock and release operations.
     BatchSizeCaps,
+    /// Upgrade-safe marker for participant list storage semantics.
+    /// Increment when `WhitelistIndex` / `BlocklistIndex` layout changes.
+    ParticipantListSchemaVersion,
 }
 
 #[contracttype]
@@ -1002,6 +1022,12 @@ pub struct ReleaseApproval {
 
 const REFUND_ELIGIBILITY_SCHEMA_VERSION_V1: u32 = 1;
 const MAINTENANCE_MODE_SCHEMA_VERSION_V1: u32 = 1;
+const PARTICIPANT_LIST_SCHEMA_VERSION_V1: u32 = 1;
+
+/// Hard upper bound on the number of addresses returned per `query_whitelist` /
+/// `query_blocklist` call. Callers that pass a larger `limit` are silently capped
+/// to this value, keeping individual ledger operations bounded.
+const MAX_PARTICIPANT_FILTER_PAGE_SIZE: u32 = 50;
 
 /// Current fee routing storage schema version.
 ///
@@ -1248,6 +1274,10 @@ impl BountyEscrowContract {
         env.storage()
             .instance()
             .set(&DataKey::MaintenanceModeUpdatedBy, &admin);
+        env.storage().instance().set(
+            &DataKey::ParticipantListSchemaVersion,
+            &PARTICIPANT_LIST_SCHEMA_VERSION_V1,
+        );
 
         events::emit_bounty_initialized(
             &env,
@@ -1418,6 +1448,75 @@ impl BountyEscrowContract {
         if batch_size == 0 || batch_size > cap {
             return Err(Error::InvalidBatchSize);
         }
+        Ok(())
+    }
+
+    /// Returns the effective runtime cap for `batch_lock_funds`.
+    ///
+    /// Falls back to the compile-time `MAX_BATCH_SIZE` when no admin-configured
+    /// cap has been stored, ensuring the contract is safe out-of-the-box.
+    fn get_max_batch_size(env: Env) -> u32 {
+        Self::get_batch_size_caps_internal(&env).lock_cap
+    }
+
+    /// Returns the effective runtime cap for `batch_release_funds`.
+    fn get_max_release_batch_size(env: Env) -> u32 {
+        Self::get_batch_size_caps_internal(&env).release_cap
+    }
+
+    /// View: returns the effective batch size caps for lock and release operations.
+    ///
+    /// When no caps have been configured by the admin, returns the compile-time
+    /// hard limit (`MAX_BATCH_SIZE`) for both fields.
+    pub fn get_batch_size_caps(env: Env) -> BatchSizeCaps {
+        Self::get_batch_size_caps_internal(&env)
+    }
+
+    /// Admin: configure independent batch size caps for lock and release operations.
+    ///
+    /// Both caps must satisfy `1 <= cap <= MAX_BATCH_SIZE` (currently 20).
+    /// Setting a cap lower than the hard limit lets operators reduce the maximum
+    /// gas footprint of a single batch call without redeploying the contract.
+    ///
+    /// # Errors
+    /// * `NotInitialized`     — contract not yet initialised
+    /// * `InvalidBatchSizeCap` — either cap is 0 or exceeds `MAX_BATCH_SIZE`
+    ///
+    /// # Events
+    /// Emits [`events::BatchSizeCapsUpdated`] with previous and new values.
+    pub fn set_batch_size_caps(
+        env: Env,
+        lock_cap: u32,
+        release_cap: u32,
+    ) -> Result<(), Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
+        }
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        let new_caps = BatchSizeCaps { lock_cap, release_cap };
+        Self::validate_batch_size_caps(&new_caps)?;
+
+        let previous = Self::get_batch_size_caps_internal(&env);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::BatchSizeCaps, &new_caps);
+
+        events::emit_batch_size_caps_updated(
+            &env,
+            events::BatchSizeCapsUpdated {
+                version: EVENT_VERSION_V2,
+                previous_lock_cap: previous.lock_cap,
+                new_lock_cap: lock_cap,
+                previous_release_cap: previous.release_cap,
+                new_release_cap: release_cap,
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
         Ok(())
     }
 
@@ -2501,16 +2600,74 @@ impl BountyEscrowContract {
         Self::get_participant_filter_mode(&env)
     }
 
-    /// Return a deterministic page of allowlisted addresses.
-    pub fn query_whitelist(env: Env, offset: u32, limit: u32) -> Vec<Address> {
-        let values = Self::read_participant_index(&env, DataKey::WhitelistIndex);
-        Self::paginate_addresses(&env, values, offset, limit)
+    /// Return the total number of allowlisted addresses.
+    pub fn get_whitelist_count(env: Env) -> u32 {
+        Self::read_participant_index(&env, DataKey::WhitelistIndex).len()
     }
 
-    /// Return a deterministic page of blocklisted addresses.
-    pub fn query_blocklist(env: Env, offset: u32, limit: u32) -> Vec<Address> {
+    /// Return the total number of blocklisted addresses.
+    pub fn get_blocklist_count(env: Env) -> u32 {
+        Self::read_participant_index(&env, DataKey::BlocklistIndex).len()
+    }
+
+    /// Return a deterministic page of allowlisted addresses with pagination metadata.
+    ///
+    /// `limit` is silently capped at `MAX_PARTICIPANT_FILTER_PAGE_SIZE` (50).
+    /// Emits a `ParticipantFilterQueried` audit event on every call.
+    pub fn query_whitelist(env: Env, offset: u32, limit: u32) -> ParticipantListPage {
+        let effective_limit = limit.min(MAX_PARTICIPANT_FILTER_PAGE_SIZE);
+        let values = Self::read_participant_index(&env, DataKey::WhitelistIndex);
+        let total = values.len();
+        let items = Self::paginate_addresses(&env, values, offset, effective_limit);
+        let result_count = items.len();
+        let has_more = (offset + result_count) < total;
+        emit_participant_filter_queried(
+            &env,
+            ParticipantFilterQueried {
+                list_type: events::ParticipantFilterListType::Allowlist,
+                offset,
+                limit: effective_limit,
+                result_count,
+                total,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+        ParticipantListPage {
+            items,
+            total,
+            offset,
+            has_more,
+        }
+    }
+
+    /// Return a deterministic page of blocklisted addresses with pagination metadata.
+    ///
+    /// `limit` is silently capped at `MAX_PARTICIPANT_FILTER_PAGE_SIZE` (50).
+    /// Emits a `ParticipantFilterQueried` audit event on every call.
+    pub fn query_blocklist(env: Env, offset: u32, limit: u32) -> ParticipantListPage {
+        let effective_limit = limit.min(MAX_PARTICIPANT_FILTER_PAGE_SIZE);
         let values = Self::read_participant_index(&env, DataKey::BlocklistIndex);
-        Self::paginate_addresses(&env, values, offset, limit)
+        let total = values.len();
+        let items = Self::paginate_addresses(&env, values, offset, effective_limit);
+        let result_count = items.len();
+        let has_more = (offset + result_count) < total;
+        emit_participant_filter_queried(
+            &env,
+            ParticipantFilterQueried {
+                list_type: events::ParticipantFilterListType::Blocklist,
+                offset,
+                limit: effective_limit,
+                result_count,
+                total,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+        ParticipantListPage {
+            items,
+            total,
+            offset,
+            has_more,
+        }
     }
 
     fn next_capability_id(env: &Env) -> BytesN<32> {
@@ -5869,12 +6026,12 @@ impl BountyEscrowContract {
         #[cfg(any(test, feature = "testutils"))]
         let gas_snapshot = gas_budget::capture(&env);
         let result: Result<u32, Error> = (|| {
-            // Validate batch size
+            // Validate batch size against the release-specific runtime cap.
             let batch_size = items.len();
             if batch_size == 0 {
                 return Err(Error::InvalidBatchSize);
             }
-            let max_batch_size = Self::get_max_batch_size(env.clone());
+            let max_batch_size = Self::get_max_release_batch_size(env.clone());
             if batch_size as u32 > max_batch_size {
                 return Err(Error::InvalidBatchSize);
             }
