@@ -857,6 +857,31 @@ pub struct BatchFundsReleased {
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
+
+// ========================================================================
+// Batch Receipt Types
+// ========================================================================
+
+pub const BATCH_RECEIPT_VERSION: u32 = 1;
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchReceipt {
+    pub version: u32,
+    pub batch_id: u64,
+    pub merkle_root: soroban_sdk::BytesN<32>,
+    pub total_amount: i128,
+    pub recipient_count: u32,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BatchReceiptKey {
+    Receipt(u64),
+    NextId,
+}
+
 pub enum BatchError {
     InvalidBatchSizeProgram = 403,
     ProgramAlreadyExists = 401,
@@ -868,6 +893,8 @@ pub enum BatchError {
     Unauthorized = 3,
     FundsPaused = 407,
     DuplicateScheduleId = 408,
+    InvalidMerkleRoot = 409,
+    BatchReceiptNotFound = 410,
 }
 
 pub const MAX_BATCH_SIZE: u32 = 100;
@@ -3374,6 +3401,49 @@ impl ProgramEscrowContract {
         program_data
     }
 
+    
+    /// Distributes prizes to multiple recipients and stores a Merkle root receipt
+    /// for deterministic batch verification.
+    pub fn batch_payout_with_receipt(
+        env: Env,
+        recipients: soroban_sdk::Vec<Address>,
+        amounts: soroban_sdk::Vec<i128>,
+        merkle_root: soroban_sdk::BytesN<32>,
+    ) -> BatchReceipt {
+        let program_data = Self::batch_payout(env.clone(), recipients.clone(), amounts.clone());
+        
+        let batch_id_key = BatchReceiptKey::NextId;
+        let batch_id: u64 = env.storage().persistent().get(&batch_id_key).unwrap_or(0);
+        
+        // Calculate total
+        let mut total_amount: i128 = 0;
+        for amount in amounts.iter() {
+            total_amount += amount;
+        }
+        
+        let receipt = BatchReceipt {
+            version: BATCH_RECEIPT_VERSION,
+            batch_id,
+            merkle_root,
+            total_amount,
+            recipient_count: recipients.len(),
+            timestamp: env.ledger().timestamp(),
+        };
+        
+        env.storage().persistent().set(&BatchReceiptKey::Receipt(batch_id), &receipt);
+        env.storage().persistent().set(&batch_id_key, &(batch_id + 1));
+        
+        receipt
+    }
+
+    /// Fetches a stored batch receipt by ID
+    pub fn get_batch_receipt(env: Env, batch_id: u64) -> Result<BatchReceipt, BatchError> {
+        env.storage()
+            .persistent()
+            .get(&BatchReceiptKey::Receipt(batch_id))
+            .ok_or(BatchError::BatchReceiptNotFound)
+    }
+
     pub fn batch_payout_v2(
         env: Env,
         _program_id: String,
@@ -4157,3 +4227,4 @@ mod test_pause;
 #[cfg(test)]
 #[cfg(any())]
 mod rbac_tests;
+mod test_batch_receipts;
