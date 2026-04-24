@@ -6535,6 +6535,212 @@ impl BountyEscrowContract {
         Ok(metadata.map(|m| m.risk_flags).unwrap_or(0))
     }
 
+    /// Sets specific risk flag bits using OR operation, leaving other bits unchanged.
+    /// Returns the updated metadata.
+    pub fn set_escrow_risk_flags(env: Env, bounty_id: u64, flags_to_set: u32) -> Result<EscrowMetadata, Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
+        }
+
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        if !env.storage().persistent().has(&DataKey::Escrow(bounty_id))
+            && !env.storage().persistent().has(&DataKey::EscrowAnon(bounty_id))
+        {
+            return Err(Error::BountyNotFound);
+        }
+
+        let mut metadata: EscrowMetadata = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Metadata(bounty_id))
+            .unwrap_or(EscrowMetadata {
+                repo_id: 0,
+                issue_id: 0,
+                bounty_type: soroban_sdk::String::from_str(&env, ""),
+                risk_flags: 0,
+                notification_prefs: 0,
+                reference_hash: None,
+            });
+
+        let previous_flags = metadata.risk_flags;
+        metadata.risk_flags |= flags_to_set;
+        let new_flags = metadata.risk_flags;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Metadata(bounty_id), &metadata);
+
+        events::emit_risk_flags_updated(
+            &env,
+            events::RiskFlagsUpdated {
+                version: events::EVENT_VERSION_V2,
+                bounty_id,
+                previous_flags,
+                new_flags,
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(metadata)
+    }
+
+    /// Clears specific risk flag bits using AND NOT operation, leaving other bits unchanged.
+    /// Returns the updated metadata.
+    pub fn clear_escrow_risk_flags(env: Env, bounty_id: u64, flags_to_clear: u32) -> Result<EscrowMetadata, Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
+        }
+
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        if !env.storage().persistent().has(&DataKey::Escrow(bounty_id))
+            && !env.storage().persistent().has(&DataKey::EscrowAnon(bounty_id))
+        {
+            return Err(Error::BountyNotFound);
+        }
+
+        let mut metadata: EscrowMetadata = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Metadata(bounty_id))
+            .unwrap_or(EscrowMetadata {
+                repo_id: 0,
+                issue_id: 0,
+                bounty_type: soroban_sdk::String::from_str(&env, ""),
+                risk_flags: 0,
+                notification_prefs: 0,
+                reference_hash: None,
+            });
+
+        let previous_flags = metadata.risk_flags;
+        metadata.risk_flags &= !flags_to_clear;
+        let new_flags = metadata.risk_flags;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Metadata(bounty_id), &metadata);
+
+        events::emit_risk_flags_updated(
+            &env,
+            events::RiskFlagsUpdated {
+                version: events::EVENT_VERSION_V2,
+                bounty_id,
+                previous_flags,
+                new_flags,
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(metadata)
+    }
+
+    /// Updates metadata fields for a bounty. Validates bounty_type length and non-empty constraint.
+    /// Returns the updated metadata.
+    pub fn update_metadata(
+        env: Env,
+        admin: Address,
+        bounty_id: u64,
+        repo_id: u64,
+        issue_id: u64,
+        bounty_type: soroban_sdk::String,
+        reference_hash: Option<soroban_sdk::Bytes>,
+    ) -> Result<EscrowMetadata, Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
+        }
+
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        if admin != stored_admin {
+            return Err(Error::Unauthorized);
+        }
+
+        if !env.storage().persistent().has(&DataKey::Escrow(bounty_id))
+            && !env.storage().persistent().has(&DataKey::EscrowAnon(bounty_id))
+        {
+            return Err(Error::BountyNotFound);
+        }
+
+        validation::validate_tag(&env, &bounty_type, "bounty_type");
+
+        let mut metadata: EscrowMetadata = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Metadata(bounty_id))
+            .unwrap_or(EscrowMetadata {
+                repo_id: 0,
+                issue_id: 0,
+                bounty_type: soroban_sdk::String::from_str(&env, ""),
+                risk_flags: 0,
+                notification_prefs: 0,
+                reference_hash: None,
+            });
+
+        let previous_repo_id = metadata.repo_id;
+        let previous_issue_id = metadata.issue_id;
+        let previous_bounty_type = metadata.bounty_type.clone();
+        let previous_reference_hash = metadata.reference_hash.clone();
+
+        metadata.repo_id = repo_id;
+        metadata.issue_id = issue_id;
+        metadata.bounty_type = bounty_type;
+        metadata.reference_hash = reference_hash;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Metadata(bounty_id), &metadata);
+
+        emit_metadata_updated(
+            &env,
+            MetadataUpdated {
+                version: EVENT_VERSION_V2,
+                bounty_id,
+                admin,
+                previous_repo_id,
+                new_repo_id: repo_id,
+                previous_issue_id,
+                new_issue_id: issue_id,
+                previous_bounty_type,
+                new_bounty_type: metadata.bounty_type.clone(),
+                previous_reference_hash,
+                new_reference_hash: metadata.reference_hash.clone(),
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(metadata)
+    }
+
+    /// Returns the full metadata for a given bounty.
+    pub fn get_metadata(env: Env, bounty_id: u64) -> Result<EscrowMetadata, Error> {
+        if !env.storage().persistent().has(&DataKey::Escrow(bounty_id))
+            && !env.storage().persistent().has(&DataKey::EscrowAnon(bounty_id))
+        {
+            return Err(Error::BountyNotFound);
+        }
+
+        let metadata: EscrowMetadata = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Metadata(bounty_id))
+            .unwrap_or(EscrowMetadata {
+                repo_id: 0,
+                issue_id: 0,
+                bounty_type: soroban_sdk::String::from_str(&env, ""),
+                risk_flags: 0,
+                notification_prefs: 0,
+                reference_hash: None,
+            });
+
+        Ok(metadata)
+    }
+
     // ============================================================================
     // CEI + REENTRANCY GUARD HARDENING
     // ============================================================================

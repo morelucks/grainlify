@@ -44,14 +44,14 @@
           "Added upgrade-safe storage keys for maintenance mode metadata and schema versioning"
         ]
       },
-      {
+       {
         "version": "2.3.0",
         "release_date": "2026-04-23",
         "changes": [
           "Added FeeRoutingInvariantChecked audit event — emitted after every fee routing operation to prove distributed_total == fee_amount",
           "Added FeeRoutingSchemaVersionSet event — emitted once during init() for upgrade-safe schema versioning",
           "Added reason field to MaintenanceModeChangedV2 for complete audit trail",
-          "Added InvalidBatchSizeCap error code for batch size governance",
+          "Added InvalidBatchSize error code for batch size governance",
           "Added BatchSizeCaps and FeeRoutingSchemaVersion DataKey variants for upgrade-safe storage",
           "Fee routing invariant is now enforced on-chain: last destination absorbs rounding remainder ensuring exact accounting"
         ]
@@ -626,7 +626,7 @@
         "pausable": false,
         "gas_estimate": "low"
       },
-      {
+       {
         "name": "is_maintenance_mode",
         "description": "Check if maintenance mode is active",
         "parameters": [],
@@ -879,9 +879,9 @@
         "pausable": false,
         "gas_estimate": "high"
       },
-      {
+       {
         "name": "update_risk_flags",
-        "description": "Updates the risk flags for a specific bounty",
+        "description": "Updates the risk flags for a specific bounty (replaces entire bitmask)",
         "parameters": [
           {
             "name": "bounty_id",
@@ -897,6 +897,96 @@
         "returns": {
           "type": "()",
           "description": "Empty on success"
+        },
+        "authorization": "admin",
+        "pausable": false,
+        "gas_estimate": "low"
+      },
+      {
+        "name": "set_escrow_risk_flags",
+        "description": "Sets specific risk flag bits using OR operation (granular governance)",
+        "parameters": [
+          {
+            "name": "bounty_id",
+            "type": "u64",
+            "description": "Bounty identifier"
+          },
+          {
+            "name": "flags_to_set",
+            "type": "u32",
+            "description": "Bitmask of flags to set (OR operation)"
+          }
+        ],
+        "returns": {
+          "type": "EscrowMetadata",
+          "description": "Updated metadata with new risk flags"
+        },
+        "authorization": "admin",
+        "pausable": false,
+        "gas_estimate": "low"
+      },
+      {
+        "name": "clear_escrow_risk_flags",
+        "description": "Clears specific risk flag bits using AND NOT operation (granular governance)",
+        "parameters": [
+          {
+            "name": "bounty_id",
+            "type": "u64",
+            "description": "Bounty identifier"
+          },
+          {
+            "name": "flags_to_clear",
+            "type": "u32",
+            "description": "Bitmask of flags to clear (AND NOT operation)"
+          }
+        ],
+        "returns": {
+          "type": "EscrowMetadata",
+          "description": "Updated metadata with cleared risk flags"
+        },
+        "authorization": "admin",
+        "pausable": false,
+        "gas_estimate": "low"
+      },
+      {
+        "name": "update_metadata",
+        "description": "Updates metadata fields for a bounty with validation",
+        "parameters": [
+          {
+            "name": "admin",
+            "type": "Address",
+            "description": "Admin address (must be authorized)"
+          },
+          {
+            "name": "bounty_id",
+            "type": "u64",
+            "description": "Bounty identifier"
+          },
+          {
+            "name": "repo_id",
+            "type": "u64",
+            "description": "Repository ID"
+          },
+          {
+            "name": "issue_id",
+            "type": "u64",
+            "description": "Issue ID"
+          },
+          {
+            "name": "bounty_type",
+            "type": "String",
+            "description": "Bounty type tag (1-50 characters)"
+          },
+          {
+            "name": "reference_hash",
+            "type": "Option<Bytes>",
+            "description": "Optional reference hash for the bounty",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "type": "EscrowMetadata",
+          "description": "Updated metadata"
         },
         "authorization": "admin",
         "pausable": false,
@@ -1530,7 +1620,7 @@
         ],
         "trigger": "Successful refund call with admin approval record"
       },
-      {
+       {
         "name": "MaintenanceModeChangedV2",
         "description": "Maintenance mode toggled with previous state (audit-friendly)",
         "data": [

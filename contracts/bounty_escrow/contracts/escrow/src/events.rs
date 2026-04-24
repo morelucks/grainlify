@@ -861,7 +861,7 @@ pub fn emit_deprecation_state_changed(env: &Env, event: DeprecationStateChanged)
 /// Payload for the [`emit_maintenance_mode_changed`] event.
 ///
 /// Emitted when maintenance mode is toggled by the admin.
-/// When enabled, all critical operations return `FundsPaused` 
+/// When enabled, all critical operations return `FundsPaused`
 /// (superseding granular pause flags).
 ///
 /// ### Topics
@@ -1015,6 +1015,48 @@ pub struct RiskFlagsUpdated {
 /// Emit [`RiskFlagsUpdated`]
 pub fn emit_risk_flags_updated(env: &Env, event: RiskFlagsUpdated) {
     let topics = (symbol_short!("risk"), event.bounty_id);
+    env.events().publish(topics, event);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// METADATA EVENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Payload for the [`emit_metadata_updated`] event.
+///
+/// Emitted when bounty metadata is updated via
+/// [`BountyEscrowContract::update_metadata`].
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"metadata"` |
+/// | 1 | `bounty_id: u64` |
+///
+/// ### Security notes
+/// - Captures the admin performing the update for audit trail.
+/// - Includes the previous and new values for each field to allow
+///   off-chain indexers to track metadata evolution.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MetadataUpdated {
+    pub version: u32,
+    pub bounty_id: u64,
+    pub admin: Address,
+    pub previous_repo_id: u64,
+    pub new_repo_id: u64,
+    pub previous_issue_id: u64,
+    pub new_issue_id: u64,
+    pub previous_bounty_type: soroban_sdk::String,
+    pub new_bounty_type: soroban_sdk::String,
+    pub previous_reference_hash: Option<soroban_sdk::Bytes>,
+    pub new_reference_hash: Option<soroban_sdk::Bytes>,
+    pub timestamp: u64,
+}
+
+/// Emit [`MetadataUpdated`]
+pub fn emit_metadata_updated(env: &Env, event: MetadataUpdated) {
+    let topics = (symbol_short!("metadata"), event.bounty_id);
     env.events().publish(topics, event);
 }
 
