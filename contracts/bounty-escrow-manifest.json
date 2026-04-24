@@ -3,7 +3,7 @@
   "contract_name": "BountyEscrowContract",
   "contract_purpose": "Manages bounty escrow with multi-token support, capability-based authorization, two-step admin rotation with timelock, refund-eligibility views, fee configuration, and comprehensive security features including reentrancy protection and rate limiting",
   "version": {
-    "current": "2.1.1",
+    "current": "2.4.0",
     "schema": "1.0.0",
     "history": [
       {
@@ -54,6 +54,17 @@
           "Added InvalidBatchSizeCap error code for batch size governance",
           "Added BatchSizeCaps and FeeRoutingSchemaVersion DataKey variants for upgrade-safe storage",
           "Fee routing invariant is now enforced on-chain: last destination absorbs rounding remainder ensuring exact accounting"
+        ]
+      },
+      {
+        "version": "2.4.0",
+        "release_date": "2026-04-24",
+        "changes": [
+          "Fixed double-guard bug in release_funds(): removed NonReentrant::enter() wrapper that caused double-acquire panic when release_funds_logic() also called reentrancy_guard::acquire()",
+          "Added reentrancy_guard::release() before all early-return error paths in release_funds_logic(), partial_release(), and refund() — guard can no longer become permanently stuck on error",
+          "Fixed compile error: removed duplicate 'reason' field in MaintenanceModeChangedV2 struct literal in set_maintenance_mode()",
+          "Added ReentrancyGuardAcquired and ReentrancyGuardReleased audit events (topics: rg_acq, rg_rel) for CEI audit trail",
+          "Added missing imports for emit_maintenance_mode_changed_v2, emit_admin_rotation_*, AdminRotation*, emit_escrow_published, emit_recurring_lock_created, EscrowPublished, RecurringLockCreated"
         ]
       }
     ]

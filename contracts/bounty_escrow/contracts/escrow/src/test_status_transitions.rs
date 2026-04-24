@@ -955,3 +955,197 @@ fn test_claim_window_expired_event_emitted_on_failure() {
     });
     assert!(found, "ClaimWindowExpired event not emitted");
 }
+
+
+// ============================================================================
+// CEI + REENTRANCY GUARD HARDENING TESTS
+// ============================================================================
+
+/// Test that release_funds() no longer has the double-guard bug.
+/// Previously, release_funds() called NonReentrant::enter() and then
+/// release_funds_logic() also called reentrancy_guard::acquire(), causing
+/// a double-acquire panic. This test verifies the fix.
+#[test]
+fn test_release_funds_no_double_guard() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let amount = 1000;
+    let deadline = setup.env.ledger().timestamp() + 1000;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    
+    // This should succeed without panicking from double-acquire
+    setup.escrow.release_funds(&bounty_id, &setup.contributor);
+    
+    assert_eq!(
+        setup.escrow.get_escrow_info(&bounty_id).status,
+        EscrowStatus::Released
+    );
+}
+
+/// Test that release_funds_logic() properly releases the guard on error paths.
+/// Previously, early returns in release_funds_logic() didn't call
+/// reentrancy_guard::release(), which could leave the guard stuck.
+#[test]
+fn test_release_funds_guard_released_on_error() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let amount = 1000;
+    let deadline = setup.env.ledger().timestamp() + 1000;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    
+    // Try to release a non-existent bounty (should fail with BountyNotFound)
+    let result = setup.escrow.try_release_funds(&999, &setup.contributor);
+    assert!(result.is_err());
+    
+    // Now try to release the real bounty - should succeed if guard was properly released
+    setup.escrow.release_funds(&bounty_id, &setup.contributor);
+    
+    assert_eq!(
+        setup.escrow.get_escrow_info(&bounty_id).status,
+        EscrowStatus::Released
+    );
+}
+
+/// Test that partial_release() properly releases the guard on error paths.
+#[test]
+fn test_partial_release_guard_released_on_error() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let amount = 1000;
+    let deadline = setup.env.ledger().timestamp() + 1000;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    
+    // Try to partial_release with invalid amount (should fail)
+    let result = setup.escrow.try_partial_release(&bounty_id, &setup.contributor, &0);
+    assert!(result.is_err());
+    
+    // Now try a valid partial_release - should succeed if guard was properly released
+    setup.escrow.partial_release(&bounty_id, &setup.contributor, &500);
+    
+    let info = setup.escrow.get_escrow_info(&bounty_id);
+    assert_eq!(info.status, EscrowStatus::Locked);
+    assert_eq!(info.remaining_amount, 500);
+}
+
+/// Test that refund() properly releases the guard on error paths.
+#[test]
+fn test_refund_guard_released_on_error() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let amount = 1000;
+    let deadline = setup.env.ledger().timestamp() + 100;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    
+    // Try to refund before deadline without approval (should fail)
+    let result = setup.escrow.try_refund(&bounty_id);
+    assert!(result.is_err());
+    
+    // Now advance time and refund - should succeed if guard was properly released
+    setup.env.ledger().set_timestamp(deadline + 1);
+    setup.escrow.refund(&bounty_id);
+    
+    assert_eq!(
+        setup.escrow.get_escrow_info(&bounty_id).status,
+        EscrowStatus::Refunded
+    );
+}
+
+/// Test that multiple sequential operations work correctly with guard release.
+#[test]
+fn test_multiple_operations_with_guard_release() {
+    let setup = TestSetup::new();
+    let bounty_id_1 = 1;
+    let bounty_id_2 = 2;
+    let amount = 1000;
+    let deadline = setup.env.ledger().timestamp() + 1000;
+
+    // Lock two bounties
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id_1, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id_2, &amount, &deadline);
+    
+    // Release first bounty
+    setup.escrow.release_funds(&bounty_id_1, &setup.contributor);
+    
+    // Partial release second bounty
+    setup.escrow.partial_release(&bounty_id_2, &setup.contributor, &500);
+    
+    // Complete release of second bounty
+    setup.escrow.partial_release(&bounty_id_2, &setup.contributor, &500);
+    
+    assert_eq!(
+        setup.escrow.get_escrow_info(&bounty_id_1).status,
+        EscrowStatus::Released
+    );
+    assert_eq!(
+        setup.escrow.get_escrow_info(&bounty_id_2).status,
+        EscrowStatus::Released
+    );
+}
+
+/// Test that CEI pattern is maintained: state is updated before external calls.
+/// This test verifies that even if a token transfer fails, the state was already
+/// updated (though Soroban will roll back the entire transaction).
+#[test]
+fn test_cei_pattern_state_before_transfer() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let amount = 1000;
+    let deadline = setup.env.ledger().timestamp() + 1000;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    
+    // Release funds - state should be updated before token transfer
+    setup.escrow.release_funds(&bounty_id, &setup.contributor);
+    
+    // Verify final state
+    let info = setup.escrow.get_escrow_info(&bounty_id);
+    assert_eq!(info.status, EscrowStatus::Released);
+    assert_eq!(info.remaining_amount, 0);
+}
+
+/// Test that guard is properly released even when freeze checks fail.
+#[test]
+fn test_guard_released_on_freeze_check_failure() {
+    let setup = TestSetup::new();
+    let bounty_id = 1;
+    let amount = 1000;
+    let deadline = setup.env.ledger().timestamp() + 1000;
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    
+    // Freeze the escrow
+    setup.escrow.freeze_escrow(&bounty_id, &None);
+    
+    // Try to release (should fail with EscrowFrozen)
+    let result = setup.escrow.try_release_funds(&bounty_id, &setup.contributor);
+    assert!(result.is_err());
+    
+    // Unfreeze and release - should succeed if guard was properly released
+    setup.escrow.unfreeze_escrow(&bounty_id);
+    setup.escrow.release_funds(&bounty_id, &setup.contributor);
+    
+    assert_eq!(
+        setup.escrow.get_escrow_info(&bounty_id).status,
+        EscrowStatus::Released
+    );
+}

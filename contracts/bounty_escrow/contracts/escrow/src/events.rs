@@ -1767,3 +1767,59 @@ pub fn emit_fee_routing_schema_version_set(env: &Env, event: FeeRoutingSchemaVer
     let topics = (symbol_short!("fee_schm"),);
     env.events().publish(topics, event);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REENTRANCY GUARD AUDIT EVENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Payload emitted when the reentrancy guard is acquired at the start of a
+/// protected function.
+///
+/// Provides a CEI audit trail: indexers can verify that every `acquired` event
+/// is followed by a matching `released` event within the same transaction.
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"rg_acq"` |
+///
+/// ### Security notes
+/// - Emitted **before** any state mutation or external call.
+/// - `function` is a short symbol identifying the protected entry-point.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReentrancyGuardAcquired {
+    pub version: u32,
+    /// Short symbol naming the protected function (e.g. `"lock"`, `"release"`).
+    pub function: soroban_sdk::Symbol,
+    pub timestamp: u64,
+}
+
+/// Emit [`ReentrancyGuardAcquired`].
+pub fn emit_reentrancy_guard_acquired(env: &Env, event: ReentrancyGuardAcquired) {
+    let topics = (symbol_short!("rg_acq"),);
+    env.events().publish(topics, event);
+}
+
+/// Payload emitted when the reentrancy guard is released at the end of a
+/// protected function (success path only; panics roll back all state including
+/// the guard flag automatically).
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"rg_rel"` |
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReentrancyGuardReleased {
+    pub version: u32,
+    /// Short symbol naming the protected function.
+    pub function: soroban_sdk::Symbol,
+    pub timestamp: u64,
+}
+
+/// Emit [`ReentrancyGuardReleased`].
+pub fn emit_reentrancy_guard_released(env: &Env, event: ReentrancyGuardReleased) {
+    let topics = (symbol_short!("rg_rel"),);
+    env.events().publish(topics, event);
+}

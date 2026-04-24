@@ -29,16 +29,25 @@ mod test_frozen_balance;
 mod test_reentrancy_guard;
 
 use crate::events::{
+    emit_admin_rotation_accepted, emit_admin_rotation_cancelled, emit_admin_rotation_proposed,
+    emit_admin_rotation_timelock_updated,
     emit_batch_funds_locked, emit_batch_funds_released, emit_bounty_initialized,
-    emit_deprecation_state_changed, emit_deterministic_selection, emit_funds_locked,
-    emit_funds_locked_anon, emit_funds_refunded, emit_funds_released,
-    emit_maintenance_mode_changed, emit_notification_preferences_updated,
-    emit_participant_filter_mode_changed, emit_refund_approval_consumed, emit_refund_approval_set,
-    emit_risk_flags_updated, emit_ticket_claimed, emit_ticket_issued, BatchFundsLocked,
+    emit_deprecation_state_changed, emit_deterministic_selection, emit_escrow_published,
+    emit_funds_locked, emit_funds_locked_anon, emit_funds_refunded, emit_funds_released,
+    emit_maintenance_mode_changed, emit_maintenance_mode_changed_v2,
+    emit_notification_preferences_updated,
+    emit_participant_filter_mode_changed, emit_recurring_lock_created,
+    emit_refund_approval_consumed, emit_refund_approval_set,
+    emit_risk_flags_updated, emit_ticket_claimed, emit_ticket_issued,
+    AdminRotationAccepted, AdminRotationCancelled, AdminRotationProposed,
+    AdminRotationTimelockUpdated,
+    BatchFundsLocked,
     BatchFundsReleased, BountyEscrowInitialized, ClaimCancelled, ClaimCreated, ClaimExecuted,
-    CriticalOperationOutcome, DeprecationStateChanged, DeterministicSelectionDerived, FundsLocked,
+    CriticalOperationOutcome, DeprecationStateChanged, DeterministicSelectionDerived,
+    EscrowPublished, FundsLocked,
     FundsLockedAnon, FundsRefunded, FundsReleased, MaintenanceModeChanged, MaintenanceModeChangedV2,
-    NotificationPreferencesUpdated, ParticipantFilterModeChanged, RefundApprovalConsumed,
+    NotificationPreferencesUpdated, ParticipantFilterModeChanged, RecurringLockCreated,
+    RefundApprovalConsumed,
     RefundApprovalSet, RefundTriggerType, RiskFlagsUpdated, TicketClaimed, TicketIssued,
     EVENT_VERSION_V2,
     emit_claim_window_set, emit_claim_window_validated, emit_claim_window_expired,
@@ -2234,7 +2243,6 @@ impl BountyEscrowContract {
                 enabled,
                 reason,
                 admin: admin.clone(),
-                reason,
                 timestamp: env.ledger().timestamp(),
             },
         );
@@ -3740,7 +3748,6 @@ impl BountyEscrowContract {
     /// # Security
     /// Reentrancy guard is always cleared before any explicit error return after acquisition.
     pub fn release_funds(env: Env, bounty_id: u64, contributor: Address) -> Result<(), Error> {
-        let _guard = NonReentrant::enter(&env);
         Self::validate_claim_window(env.clone(), bounty_id)?;
         let caller = env
             .storage()
@@ -3765,11 +3772,13 @@ impl BountyEscrowContract {
 
         // 2. Contract must be initialized
         if !env.storage().instance().has(&DataKey::Admin) {
+            reentrancy_guard::release(&env);
             return Err(Error::NotInitialized);
         }
 
         // 3. Operational state: paused
         if Self::check_paused(&env, symbol_short!("release")) {
+            reentrancy_guard::release(&env);
             return Err(Error::FundsPaused);
         }
 
@@ -3779,6 +3788,7 @@ impl BountyEscrowContract {
 
         // 5. Business logic: bounty must exist and be locked
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            reentrancy_guard::release(&env);
             return Err(Error::BountyNotFound);
         }
 
@@ -3788,8 +3798,14 @@ impl BountyEscrowContract {
             .get(&DataKey::Escrow(bounty_id))
             .unwrap();
 
-        Self::ensure_escrow_not_frozen(&env, bounty_id)?;
-        Self::ensure_address_not_frozen(&env, &escrow.depositor)?;
+        if let Err(e) = Self::ensure_escrow_not_frozen(&env, bounty_id) {
+            reentrancy_guard::release(&env);
+            return Err(e);
+        }
+        if let Err(e) = Self::ensure_address_not_frozen(&env, &escrow.depositor) {
+            reentrancy_guard::release(&env);
+            return Err(e);
+        }
 
         if escrow.status != EscrowStatus::Locked {
             reentrancy_guard::release(&env);
@@ -4697,6 +4713,7 @@ impl BountyEscrowContract {
         reentrancy_guard::acquire(&env);
 
         if !env.storage().instance().has(&DataKey::Admin) {
+            reentrancy_guard::release(&env);
             return Err(Error::NotInitialized);
         }
 
@@ -4707,6 +4724,7 @@ impl BountyEscrowContract {
         let gas_snapshot = gas_budget::capture(&env);
 
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            reentrancy_guard::release(&env);
             return Err(Error::BountyNotFound);
         }
 
@@ -4716,20 +4734,29 @@ impl BountyEscrowContract {
             .get(&DataKey::Escrow(bounty_id))
             .unwrap();
 
-        Self::ensure_escrow_not_frozen(&env, bounty_id)?;
-        Self::ensure_address_not_frozen(&env, &escrow.depositor)?;
+        if let Err(e) = Self::ensure_escrow_not_frozen(&env, bounty_id) {
+            reentrancy_guard::release(&env);
+            return Err(e);
+        }
+        if let Err(e) = Self::ensure_address_not_frozen(&env, &escrow.depositor) {
+            reentrancy_guard::release(&env);
+            return Err(e);
+        }
 
         if escrow.status != EscrowStatus::Locked {
+            reentrancy_guard::release(&env);
             return Err(Error::FundsNotLocked);
         }
 
         // Guard: zero or negative payout makes no sense and would corrupt state
         if payout_amount <= 0 {
+            reentrancy_guard::release(&env);
             return Err(Error::InvalidAmount);
         }
 
         // Guard: prevent overpayment — payout cannot exceed what is still owed
         if payout_amount > escrow.remaining_amount {
+            reentrancy_guard::release(&env);
             return Err(Error::InsufficientFunds);
         }
 
@@ -4819,6 +4846,7 @@ impl BountyEscrowContract {
         reentrancy_guard::acquire(&env);
 
         if Self::check_paused(&env, symbol_short!("refund")) {
+            reentrancy_guard::release(&env);
             return Err(Error::FundsPaused);
         }
         // Snapshot resource meters for gas cap enforcement (test / testutils only).
@@ -4826,6 +4854,7 @@ impl BountyEscrowContract {
         let gas_snapshot = gas_budget::capture(&env);
 
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            reentrancy_guard::release(&env);
             return Err(Error::BountyNotFound);
         }
 
@@ -4835,20 +4864,27 @@ impl BountyEscrowContract {
             .get(&DataKey::Escrow(bounty_id))
             .unwrap();
 
-        Self::ensure_escrow_not_frozen(&env, bounty_id)?;
-        Self::ensure_address_not_frozen(&env, &escrow.depositor)?;
+        if let Err(e) = Self::ensure_escrow_not_frozen(&env, bounty_id) {
+            reentrancy_guard::release(&env);
+            return Err(e);
+        }
+        if let Err(e) = Self::ensure_address_not_frozen(&env, &escrow.depositor) {
+            reentrancy_guard::release(&env);
+            return Err(e);
+        }
 
         // Require authenticated approval from both admin and depositor.
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
+            .ok_or_else(|| { reentrancy_guard::release(&env); Error::NotInitialized })?;
         admin.require_auth();
         escrow.depositor.require_auth();
 
         if escrow.status != EscrowStatus::Locked && escrow.status != EscrowStatus::PartiallyRefunded
         {
+            reentrancy_guard::release(&env);
             return Err(Error::FundsNotLocked);
         }
 
@@ -4864,6 +4900,7 @@ impl BountyEscrowContract {
                 .get(&DataKey::PendingClaim(bounty_id))
                 .unwrap();
             if !claim.claimed {
+                reentrancy_guard::release(&env);
                 return Err(Error::ClaimPending);
             }
         }
@@ -4876,6 +4913,7 @@ impl BountyEscrowContract {
         // 1. Deadline has passed (returns full amount to depositor)
         // 2. An administrative approval exists (can be early, partial, and to custom recipient)
         if now < escrow.deadline && approval.is_none() {
+            reentrancy_guard::release(&env);
             return Err(Error::DeadlineNotPassed);
         }
 
@@ -4888,6 +4926,7 @@ impl BountyEscrowContract {
         };
 
         if refund_amount <= 0 || refund_amount > escrow.remaining_amount {
+            reentrancy_guard::release(&env);
             return Err(Error::InvalidAmount);
         }
 
