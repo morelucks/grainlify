@@ -637,6 +637,32 @@
         "authorization": "any",
         "pausable": false,
         "gas_estimate": "low"
+      },
+      {
+        "name": "get_high_value_config",
+        "description": "Get the current high-value release timelock configuration",
+        "parameters": [],
+        "returns": {
+          "type": "Option<HighValueConfig>",
+          "description": "Threshold and duration, or None if not configured"
+        },
+        "authorization": "any",
+        "pausable": false,
+        "gas_estimate": "low"
+      },
+      {
+        "name": "get_queued_release",
+        "description": "Get the pending queued release for a bounty, if any",
+        "parameters": [
+          { "name": "bounty_id", "type": "u64", "description": "Bounty identifier" }
+        ],
+        "returns": {
+          "type": "Option<QueuedRelease>",
+          "description": "Queued release record or None"
+        },
+        "authorization": "any",
+        "pausable": false,
+        "gas_estimate": "low"
       }
     ],
     "admin": [

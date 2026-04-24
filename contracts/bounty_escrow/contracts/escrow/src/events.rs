@@ -1791,3 +1791,30 @@ pub fn emit_fee_routing_schema_version_set(env: &Env, event: FeeRoutingSchemaVer
     let topics = (symbol_short!("fee_schm"),);
     env.events().publish(topics, event);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HIGH-VALUE TIMELOCK QUEUE CANCELLATION EVENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Emitted when an admin cancels a pending high-value queued release.
+///
+/// ### Topics
+/// | Index | Value |
+/// |-------|-------|
+/// | 0 | `"hv_cncl"` |
+/// | 1 | `bounty_id: u64` |
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseQueueCancelled {
+    pub version: u32,
+    pub bounty_id: u64,
+    pub contributor: Address,
+    pub amount: i128,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+pub fn emit_release_queue_cancelled(env: &Env, event: ReleaseQueueCancelled) {
+    let topics = (symbol_short!("hv_cncl"), event.bounty_id);
+    env.events().publish(topics, event);
+}

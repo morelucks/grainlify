@@ -638,6 +638,10 @@ pub enum Error {
     InvalidAdminRotationTarget = 51,
     /// Batch size cap is outside the accepted bounds (1..=MAX_BATCH_SIZE).
     InvalidBatchSizeCap = 52,
+    /// High-value release timelock has not yet elapsed; call execute_queued_release after the delay.
+    TimelockNotElapsed = 53,
+    /// A release is already queued for this bounty; cancel it before queuing another.
+    ReleaseAlreadyQueued = 54,
 }
 
 /// Bit flag: escrow or payout should be treated as elevated risk (indexers, UIs).
@@ -4194,6 +4198,53 @@ impl BountyEscrowContract {
             return Err(Error::FundsNotLocked);
         }
 
+        // High-value timelock: if configured and amount >= threshold, queue instead of releasing.
+        if let Some(hv_cfg) = env
+            .storage()
+            .instance()
+            .get::<DataKey, HighValueConfig>(&DataKey::HighValueConfig)
+        {
+            if hv_cfg.threshold > 0 && escrow.amount >= hv_cfg.threshold {
+                // Reject if a release is already queued for this bounty.
+                if env
+                    .storage()
+                    .persistent()
+                    .has(&DataKey::QueuedRelease(bounty_id))
+                {
+                    reentrancy_guard::release(&env);
+                    return Err(Error::ReleaseAlreadyQueued);
+                }
+
+                let executable_at = env
+                    .ledger()
+                    .timestamp()
+                    .saturating_add(hv_cfg.duration);
+                let queued = QueuedRelease {
+                    contributor: contributor.clone(),
+                    amount: escrow.amount,
+                    executable_at,
+                };
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::QueuedRelease(bounty_id), &queued);
+
+                events::emit_release_queued(
+                    &env,
+                    events::ReleaseQueued {
+                        version: EVENT_VERSION_V2,
+                        bounty_id,
+                        contributor,
+                        amount: escrow.amount,
+                        executable_at,
+                        timestamp: env.ledger().timestamp(),
+                    },
+                );
+
+                reentrancy_guard::release(&env);
+                return Ok(());
+            }
+        }
+
         // Resolve effective fee config for release.
         let (
             _lock_fee_rate,
@@ -6526,7 +6577,7 @@ impl BountyEscrowContract {
         }
 
         let config = HighValueConfig { threshold, duration };
-        env.storage().instance().set(&symbol_short!("hv_cfg"), &config);
+        env.storage().instance().set(&DataKey::HighValueConfig, &config);
 
         events::emit_high_value_config_updated(
             &env,
@@ -6544,77 +6595,60 @@ impl BountyEscrowContract {
 
     /// View: Gets the current high-value release configuration.
     pub fn get_high_value_config(env: Env) -> Option<HighValueConfig> {
-        env.storage().instance().get(&symbol_short!("hv_cfg"))
+        env.storage().instance().get(&DataKey::HighValueConfig)
     }
 
     /// View: Gets a currently queued release for a specific bounty.
     pub fn get_queued_release(env: Env, bounty_id: u64) -> Option<QueuedRelease> {
         env.storage()
             .persistent()
-            .get(&(symbol_short!("hv_q"), bounty_id))
+            .get(&DataKey::QueuedRelease(bounty_id))
     }
 
-    /// Queues a high-value release for the timelock.
-    /// In a full flow, this replaces the direct token transfer in `release_funds` when amount >= threshold.
-    pub fn queue_high_value_release(
-        env: Env,
-        bounty_id: u64,
-        contributor: Address,
-        amount: i128,
-    ) -> Result<(), Error> {
-        let admin = rbac::require_admin(&env);
-        admin.require_auth(); // Authorized by admin or delegator in standard flow
-
-        let config = Self::get_high_value_config(env.clone()).unwrap_or(HighValueConfig {
-            threshold: i128::MAX, // Effectively disables if unconfigured
-            duration: 0,
-        });
-
-        if amount < config.threshold {
-            return Err(Error::InvalidAmount); 
-        }
-
-        let executable_at = env.ledger().timestamp().saturating_add(config.duration);
-        let queued = QueuedRelease {
-            contributor: contributor.clone(),
-            amount,
-            executable_at,
-        };
-
-        // Upgrade-safe tuple storage key
-        env.storage()
-            .persistent()
-            .set(&(symbol_short!("hv_q"), bounty_id), &queued);
-
-        events::emit_release_queued(
-            &env,
-            events::ReleaseQueued {
-                version: events::EVENT_VERSION_V2,
-                bounty_id,
-                contributor,
-                amount,
-                executable_at,
-                timestamp: env.ledger().timestamp(),
-            },
-        );
-
-        Ok(())
-    }
-
-    /// Executes a queued release once its timelock has expired.
+    /// Executes a queued high-value release once its timelock has elapsed.
+    ///
+    /// Anyone may call this after `executable_at`; the admin queued the release
+    /// via `release_funds` and the timelock enforces the delay.
     pub fn execute_queued_release(env: Env, bounty_id: u64) -> Result<(), Error> {
-        let queued = Self::get_queued_release(env.clone(), bounty_id).ok_or(Error::BountyNotFound)?;
+        let _guard = NonReentrant::enter(&env);
+
+        let queued: QueuedRelease = env
+            .storage()
+            .persistent()
+            .get(&DataKey::QueuedRelease(bounty_id))
+            .ok_or(Error::BountyNotFound)?;
 
         if env.ledger().timestamp() < queued.executable_at {
-            return Err(Error::DeadlineNotPassed);
+            return Err(Error::TimelockNotElapsed);
         }
 
-        // Clean up the queue to prevent double-spending
+        // EFFECTS: remove queue entry before token transfer (CEI)
         env.storage()
             .persistent()
-            .remove(&(symbol_short!("hv_q"), bounty_id));
+            .remove(&DataKey::QueuedRelease(bounty_id));
 
-        // Note: Contract-to-token transfer logic integrates here
+        // Update escrow status to Released
+        if env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            let mut escrow: Escrow = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Escrow(bounty_id))
+                .unwrap();
+            escrow.status = EscrowStatus::Released;
+            escrow.remaining_amount = 0;
+            env.storage()
+                .persistent()
+                .set(&DataKey::Escrow(bounty_id), &escrow);
+        }
+
+        // INTERACTION: token transfer after state update
+        let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let client = token::Client::new(&env, &token_addr);
+        client.transfer(
+            &env.current_contract_address(),
+            &queued.contributor,
+            &queued.amount,
+        );
 
         events::emit_queued_release_executed(
             &env,
@@ -6623,6 +6657,39 @@ impl BountyEscrowContract {
                 bounty_id,
                 contributor: queued.contributor,
                 amount: queued.amount,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(())
+    }
+
+    /// Cancels a pending queued release (admin only).
+    ///
+    /// The escrow remains in `Locked` status so the admin can re-release
+    /// normally or queue again.
+    pub fn cancel_queued_release(env: Env, bounty_id: u64) -> Result<(), Error> {
+        let admin = rbac::require_admin(&env);
+        admin.require_auth();
+
+        let queued: QueuedRelease = env
+            .storage()
+            .persistent()
+            .get(&DataKey::QueuedRelease(bounty_id))
+            .ok_or(Error::BountyNotFound)?;
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::QueuedRelease(bounty_id));
+
+        events::emit_release_queue_cancelled(
+            &env,
+            events::ReleaseQueueCancelled {
+                version: events::EVENT_VERSION_V2,
+                bounty_id,
+                contributor: queued.contributor,
+                amount: queued.amount,
+                admin,
                 timestamp: env.ledger().timestamp(),
             },
         );
