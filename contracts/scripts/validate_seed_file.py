@@ -161,6 +161,111 @@ def _deployment_seed_checks(data: dict, path: Path) -> list[str]:
     return errors
 
 
+def _error_registry_checks(manifest: dict, path: Path) -> list[str]:
+    """Validate the optional error_registry section of a manifest.
+
+    Checks:
+    - error_registry.codes is an array of objects
+    - Each entry has a positive integer `code` and a non-empty string `name`
+    - No two entries share the same numeric code (within this manifest)
+    - If `ranges` are declared, every range has min <= max and min >= 1
+    """
+    errors: list[str] = []
+    reg = manifest.get("error_registry")
+    if reg is None:
+        return errors  # section is optional
+    if not isinstance(reg, dict):
+        errors.append(f"{path.name}: error_registry must be an object; got {type(reg).__name__}")
+        return errors
+
+    codes = reg.get("codes", [])
+    if not isinstance(codes, list):
+        errors.append(f"{path.name}: error_registry.codes must be an array")
+        return errors
+
+    seen: dict[int, str] = {}
+    for i, entry in enumerate(codes):
+        if not isinstance(entry, dict):
+            errors.append(f"{path.name}: error_registry.codes[{i}] must be an object")
+            continue
+
+        code = entry.get("code")
+        name = entry.get("name", f"<entry {i}>")
+
+        if not isinstance(code, int) or isinstance(code, bool) or code < 1:
+            errors.append(
+                f"{path.name}: error_registry.codes[{i}].code must be a positive integer; got {code!r}"
+            )
+            continue
+
+        if not isinstance(name, str) or not name.strip():
+            errors.append(f"{path.name}: error_registry.codes[{i}].name must be a non-empty string")
+
+        if code in seen:
+            errors.append(
+                f"{path.name}: duplicate error code {code} — "
+                f"used by both '{seen[code]}' and '{name}'"
+            )
+        else:
+            seen[code] = name
+
+    ranges = reg.get("ranges", [])
+    if not isinstance(ranges, list):
+        errors.append(f"{path.name}: error_registry.ranges must be an array")
+        return errors
+
+    for j, rng in enumerate(ranges):
+        if not isinstance(rng, dict):
+            errors.append(f"{path.name}: error_registry.ranges[{j}] must be an object")
+            continue
+        rmin = rng.get("min")
+        rmax = rng.get("max")
+        rname = rng.get("name", f"<range {j}>")
+        if not isinstance(rmin, int) or isinstance(rmin, bool) or rmin < 1:
+            errors.append(f"{path.name}: error_registry.ranges[{j}] ({rname!r}) min must be an integer >= 1")
+        if not isinstance(rmax, int) or isinstance(rmax, bool):
+            errors.append(f"{path.name}: error_registry.ranges[{j}] ({rname!r}) max must be an integer")
+        if isinstance(rmin, int) and isinstance(rmax, int) and rmin > rmax:
+            errors.append(
+                f"{path.name}: error_registry.ranges[{j}] ({rname!r}) min ({rmin}) > max ({rmax})"
+            )
+
+    return errors
+
+
+def _cross_manifest_error_code_warnings(
+    manifests_data: "list[tuple[Path, dict]]",
+) -> list[str]:
+    """Return warning strings for error codes that appear in more than one manifest.
+
+    Cross-contract duplicates are *warnings*, not errors: Soroban contracts have
+    independent error namespaces, so the same numeric value in two contracts is
+    legal.  However, documenting the overlap helps SDK authors and auditors.
+    """
+    # code -> list of (contract_name, variant_name)
+    global_map: dict[int, list[tuple[str, str]]] = {}
+    for path, manifest in manifests_data:
+        contract_name = manifest.get("contract_name") or path.stem
+        reg = manifest.get("error_registry") or {}
+        for entry in reg.get("codes") or []:
+            if not isinstance(entry, dict):
+                continue
+            code = entry.get("code")
+            name = entry.get("name", "?")
+            if not isinstance(code, int) or isinstance(code, bool) or code < 1:
+                continue
+            global_map.setdefault(code, []).append((contract_name, name))
+
+    warnings = []
+    for code, usages in sorted(global_map.items()):
+        if len(usages) > 1:
+            detail = ", ".join(f"{c}::{n}" for c, n in usages)
+            warnings.append(
+                f"WARN: error code {code} appears in multiple contracts: {detail}"
+            )
+    return warnings
+
+
 def main() -> int:
     # Existence + JSON validity check only (AJV is the schema enforcer).
     _load_json(SCHEMA_PATH)
@@ -171,12 +276,16 @@ def main() -> int:
         return 0
 
     all_errors: list[str] = []
+    valid_manifests: list[tuple[Path, dict]] = []
+
     for path in manifests:
         manifest = _load_json(path)
         if not isinstance(manifest, dict):
             all_errors.append(f"{path.name}: root must be an object; got {type(manifest).__name__}")
             continue
         all_errors.extend(_basic_manifest_checks(manifest, path))
+        all_errors.extend(_error_registry_checks(manifest, path))
+        valid_manifests.append((path, manifest))
 
     seed_files = _find_deployment_seed_files()
     for seed_path in seed_files:
@@ -191,7 +300,15 @@ def main() -> int:
             print(f"ERROR: {e}")
         return 1
 
-    print(f"OK: validated {len(manifests)} manifest(s) and {len(seed_files)} deployment seed file(s).")
+    # Cross-manifest warnings are printed but do not fail the script.
+    for w in _cross_manifest_error_code_warnings(valid_manifests):
+        print(w)
+
+    print(
+        f"OK: validated {len(manifests)} manifest(s), "
+        f"{len(seed_files)} deployment seed file(s), "
+        f"and error code registry uniqueness."
+    )
     return 0
 
 

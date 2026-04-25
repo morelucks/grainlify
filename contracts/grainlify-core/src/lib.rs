@@ -24,11 +24,15 @@ use soroban_sdk::{
 use soroban_sdk::testutils::Address as _;
 pub mod asset;
 pub mod commit_reveal;
+pub mod error_registry;
 pub mod errors;
 mod governance;
 pub mod nonce;
 pub mod pseudo_randomness;
 pub mod strict_mode;
+
+#[cfg(test)]
+mod test_error_registry;
 
 pub use governance::{GovernanceConfig, Proposal, ProposalStatus, Vote, VoteType, VotingScheme};
 
@@ -301,6 +305,19 @@ pub struct WatchdogStatus {
     pub version: u32,
 }
 
+/// Liveness snapshot returned by `liveness_watchdog`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LivenessStatus {
+    pub is_paused: bool,
+    pub is_read_only: bool,
+    pub is_operational: bool,
+    pub version: u32,
+    pub admin_set: bool,
+    pub timestamp: u64,
+    pub schema_version: u32,
+}
+
 /// Storage keys for contract data.
 ///
 /// # Keys
@@ -420,12 +437,8 @@ enum DataKey {
     /// Upgrade-safe schema version marker for liveness watchdog storage.
     /// Written on init_admin; increment when LivenessStatus layout changes.
     LivenessSchemaVersion,
-    /// Ledger timestamp of the last successful `ping_watchdog` call.
-    /// Stored in instance storage; 0 / absent means never pinged.
+    /// Timestamp of the last successful ping_watchdog call.
     WatchdogLastPing,
-    /// Ordered list of deployed contract addresses tracked by this core contract.
-    /// Used as a registry for discoverability and cross-contract coordination.
-    DeployedContractRegistry,
 }
 
 // ============================================================================
@@ -773,7 +786,7 @@ impl GrainlifyContract {
         env.storage().instance().set(&DataKey::Version, &VERSION);
         env.storage().instance().set(&DataKey::ReadOnlyMode, &false);
         env.storage().instance().set(&DataKey::LivenessSchemaVersion, &LIVENESS_SCHEMA_VERSION);
-
+        
         // Emit BuildInfo event for initialization tracking and auditing
         env.events().publish(
             (symbol_short!("init"), symbol_short!("build")),
@@ -1356,6 +1369,53 @@ impl GrainlifyContract {
         MultiSig::is_contract_paused(&env)
     }
 
+    /// Unified liveness watchdog view — no auth required, never panics.
+    ///
+    /// Returns a `LivenessStatus` snapshot combining pause state, read-only
+    /// mode, monitoring health, last-ping timestamp, version, and admin
+    /// presence.  Designed for polling by monitoring agents, circuit breakers,
+    /// and dashboards.
+    ///
+    /// # Upgrade Safety
+    /// `schema_version` reflects `LivenessSchemaVersion` written at `init_admin`.
+    /// Returns `0` on legacy deployments where the marker was never written.
+    pub fn liveness_watchdog(env: Env) -> LivenessStatus {
+        let is_paused = MultiSig::is_contract_paused(&env);
+        let is_read_only: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::ReadOnlyMode)
+            .unwrap_or(false);
+        let version: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Version)
+            .unwrap_or(0);
+        let healthy = monitoring::check_invariants(&env).healthy;
+        let last_ping_ts: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::WatchdogLastPing)
+            .unwrap_or(0);
+        LivenessStatus {
+            is_paused,
+            is_read_only,
+            is_operational: !is_paused && !is_read_only,
+            admin_set: env.storage().instance().has(&DataKey::Admin),
+            schema_version: env
+                .storage()
+                .instance()
+                .get(&DataKey::LivenessSchemaVersion)
+                .unwrap_or(0),
+            timestamp: env.ledger().timestamp(),
+            paused: is_paused,
+            read_only: is_read_only,
+            healthy,
+            last_ping_ts,
+            version,
+        }
+    }
+
     /// Returns the liveness schema version written at init.
     /// Returns `0` on legacy deployments where the marker was never written.
     pub fn get_liveness_schema_version(env: Env) -> u32 {
@@ -1372,38 +1432,6 @@ impl GrainlifyContract {
     // ========================================================================
     // Liveness Watchdog
     // ========================================================================
-
-    /// View: returns a consolidated liveness snapshot — no auth required.
-    ///
-    /// Aggregates pause state, read-only mode, monitoring health, last ping
-    /// timestamp, and current version into a single `WatchdogStatus` struct.
-    /// Safe to call at any time; never panics.
-    ///
-    /// # Security Notes
-    /// - Pure read — no state mutations, no auth required.
-    /// - Callers MUST NOT use this as a sole gate for critical operations;
-    ///   individual guards (`require_not_read_only`, `is_paused`) remain
-    ///   authoritative for mutation paths.
-    pub fn liveness_watchdog(env: Env) -> WatchdogStatus {
-        let paused = MultiSig::is_contract_paused(&env);
-        let read_only: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::ReadOnlyMode)
-            .unwrap_or(false);
-        let healthy = monitoring::check_invariants(&env).healthy;
-        let last_ping_ts: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::WatchdogLastPing)
-            .unwrap_or(0);
-        let version: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Version)
-            .unwrap_or(0);
-        WatchdogStatus { paused, read_only, healthy, last_ping_ts, version }
-    }
 
     /// Admin: record a liveness ping — updates `WatchdogLastPing` timestamp.
     ///
@@ -1449,178 +1477,181 @@ impl GrainlifyContract {
     }
 
     // ========================================================================
-    // Deployed Contract Registry
+    // Multisig Initialization
     // ========================================================================
 
-    /// Register a deployed contract address in the on-chain registry.
+    /// Initialize with multisig governance (alternative to init_admin).
+    /// Requires at least one signer and a valid threshold.
+    pub fn init(env: Env, signers: Vec<Address>, threshold: u32) {
+        if env.storage().instance().has(&DataKey::Version) {
+            panic!("Already initialized");
+        }
+        MultiSig::init(&env, signers, threshold);
+        env.storage().instance().set(&DataKey::Version, &VERSION);
+        env.storage().instance().set(&DataKey::ReadOnlyMode, &false);
+    }
+
+    /// Initialize with admin, chain_id, and network_id (network-aware init).
+    pub fn init_with_network(env: Env, admin: Address, chain_id: String, network_id: String) {
+        if env.storage().instance().has(&DataKey::Version) {
+            panic!("Already initialized");
+        }
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Version, &VERSION);
+        env.storage().instance().set(&DataKey::ReadOnlyMode, &false);
+        env.storage().instance().set(&DataKey::ChainId, &chain_id);
+        env.storage().instance().set(&DataKey::NetworkId, &network_id);
+    }
+
+    /// Initialize with governance configuration.
+    pub fn init_governance(env: Env, admin: Address, config: GovernanceConfig) {
+        if env.storage().instance().has(&DataKey::Version) {
+            panic!("Already initialized");
+        }
+        admin.require_auth();
+        if config.quorum_percentage == 0 || config.quorum_percentage > 10000 {
+            panic!("Invalid quorum percentage");
+        }
+        if config.approval_threshold < 5000 || config.approval_threshold > 10000 {
+            panic!("Invalid approval threshold");
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Version, &VERSION);
+        env.storage().instance().set(&DataKey::ReadOnlyMode, &false);
+        env.storage().instance().set(&governance::GOVERNANCE_CONFIG, &config);
+        env.storage().instance().set(&governance::PROPOSAL_COUNT, &0u32);
+    }
+
+    // ========================================================================
+    // Multisig Upgrade Proposal Flow
+    // ========================================================================
+
+    /// Propose a WASM upgrade via multisig. Returns the stable proposal ID.
+    /// `expiry` is a ledger timestamp after which the proposal cannot be approved
+    /// or executed (0 = no expiry).
+    pub fn propose_upgrade(env: Env, proposer: Address, wasm_hash: BytesN<32>, expiry: u64) -> u64 {
+        Self::require_not_paused(&env);
+        Self::require_not_read_only(&env);
+        let proposal_id = MultiSig::propose(&env, proposer.clone(), expiry);
+        env.storage().instance().set(&DataKey::UpgradeProposal(proposal_id), &wasm_hash);
+        env.storage().instance().set(&DataKey::UpgradeProposalProposer(proposal_id), &proposer);
+        proposal_id
+    }
+
+    /// Approve a pending upgrade proposal. Starts the timelock when threshold is met.
+    pub fn approve_upgrade(env: Env, proposal_id: u64, signer: Address) {
+        Self::require_not_paused(&env);
+        MultiSig::approve(&env, proposal_id, signer);
+        // Start timelock if threshold is now met and not already started
+        if MultiSig::can_execute(&env, proposal_id)
+            && !env.storage().instance().has(&DataKey::UpgradeTimelock(proposal_id))
+        {
+            let now = env.ledger().timestamp();
+            env.storage().instance().set(&DataKey::UpgradeTimelock(proposal_id), &now);
+            env.events().publish(
+                (Symbol::new(&env, "timelock"), Symbol::new(&env, "started")),
+                (proposal_id, now),
+            );
+        }
+    }
+
+    /// Cancel a pending upgrade proposal. Any signer may cancel.
+    pub fn cancel_upgrade(env: Env, proposal_id: u64, canceller: Address) {
+        MultiSig::cancel(&env, proposal_id, canceller);
+        env.storage().instance().remove(&DataKey::UpgradeTimelock(proposal_id));
+    }
+
+    /// Return the upgrade proposal record for a given proposal ID, or None.
+    pub fn get_upgrade_proposal(env: Env, proposal_id: u64) -> Option<UpgradeProposalRecord> {
+        Self::load_upgrade_proposal(&env, proposal_id)
+    }
+
+    // ========================================================================
+    // Migration
+    // ========================================================================
+
+    /// Pre-commit a migration hash for replay protection.
+    /// Must be called before `migrate()` with the same target_version and hash.
+    pub fn commit_migration(env: Env, target_version: u32, hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("{}", ContractError::NotInitialized as u32));
+        admin.require_auth();
+        Self::require_not_read_only(&env);
+        let commitment = MigrationCommitment {
+            target_version,
+            hash,
+            committed_at: env.ledger().timestamp(),
+            expires_at: 0,
+        };
+        env.storage().instance().set(&DataKey::MigrationCommitment(target_version), &commitment);
+        env.events().publish(
+            (symbol_short!("migrate"), symbol_short!("commit")),
+            (target_version, env.ledger().timestamp()),
+        );
+    }
+
+    /// Execute a state migration to `target_version`.
     ///
-    /// If the address is already registered, the existing entry is updated
-    /// (not duplicated) with the new metadata.
-    ///
-    /// # Authorization
-    /// Requires admin signature.
-    ///
-    /// # Panics
-    /// - If contract is not initialized
-    /// - If read-only mode is active
-    /// - If registry has reached `MAX_DEPLOYED_CONTRACTS`
-    pub fn register_deployed_contract(
-        env: Env,
-        address: Address,
-        name: String,
-        kind: ContractKind,
-        version: u32,
-    ) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
+    /// Requires a prior `commit_migration` call with the same hash (replay protection).
+    /// Idempotent: migrating to the same version twice is a no-op after the first call.
+    pub fn migrate(env: Env, target_version: u32, migration_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("{}", ContractError::NotInitialized as u32));
         admin.require_auth();
         Self::require_not_read_only(&env);
 
-        let mut registry: Vec<DeployedContract> = env
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedContractRegistry)
-            .unwrap_or(Vec::new(&env));
-
-        // Update existing entry if address already registered
-        let mut updated = false;
-        for i in 0..registry.len() {
-            let mut entry = registry.get(i).unwrap();
-            if entry.address == address {
-                entry.name = name.clone();
-                entry.kind = kind.clone();
-                entry.version = version;
-                entry.deployed_at = env.ledger().timestamp();
-                registry.set(i, entry);
-                updated = true;
-                break;
+        // Idempotency: skip if already migrated to this version
+        if let Some(state) = env.storage().instance().get::<_, MigrationState>(&DataKey::MigrationState) {
+            if state.to_version == target_version {
+                return;
             }
         }
 
-        if !updated {
-            if registry.len() >= MAX_DEPLOYED_CONTRACTS {
-                panic!("Registry full: max {} deployed contracts", MAX_DEPLOYED_CONTRACTS);
-            }
-            registry.push_back(DeployedContract {
-                address: address.clone(),
-                name: name.clone(),
-                kind: kind.clone(),
-                version,
-                deployed_at: env.ledger().timestamp(),
-            });
+        // [FIX-C01] Verify commitment exists and hash matches
+        let commitment: MigrationCommitment = env.storage().instance()
+            .get(&DataKey::MigrationCommitment(target_version))
+            .unwrap_or_else(|| panic!("{}", ContractError::MigrationCommitmentNotFound as u32));
+
+        if commitment.hash != migration_hash {
+            panic!("{}", ContractError::MigrationHashMismatch as u32);
         }
 
-        env.storage()
-            .instance()
-            .set(&DataKey::DeployedContractRegistry, &registry);
+        let current_version: u32 = env.storage().instance().get(&DataKey::Version).unwrap_or(1);
+
+        // Run version-specific migration logic
+        if current_version == 1 && target_version == 2 {
+            migrate_v1_to_v2(&env);
+        }
+
+        let state = MigrationState {
+            from_version: current_version,
+            to_version: target_version,
+            migrated_at: env.ledger().timestamp(),
+            migration_hash: migration_hash.clone(),
+        };
+        env.storage().instance().set(&DataKey::MigrationState, &state);
+        env.storage().instance().set(&DataKey::Version, &target_version);
+
+        // Consume commitment (replay protection)
+        env.storage().instance().remove(&DataKey::MigrationCommitment(target_version));
 
         env.events().publish(
-            (symbol_short!("registry"), symbol_short!("reg")),
-            (address, name, kind, version),
+            (symbol_short!("migrate"), symbol_short!("done")),
+            (current_version, target_version, env.ledger().timestamp()),
         );
+
+        monitoring::track_operation(&env, symbol_short!("migrate"), admin, true);
     }
 
-    /// Remove a deployed contract address from the registry.
-    ///
-    /// If `address` is not in the registry this is a no-op.
-    ///
-    /// # Authorization
-    /// Requires admin signature.
-    pub fn deregister_deployed_contract(env: Env, address: Address) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("{}", ContractError::NotInitialized as u32));
-        admin.require_auth();
-        Self::require_not_read_only(&env);
+    // ========================================================================
+    // Internal helpers
+    // ========================================================================
 
-        let registry: Vec<DeployedContract> = env
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedContractRegistry)
-            .unwrap_or(Vec::new(&env));
-
-        let mut updated = Vec::new(&env);
-        for entry in registry.iter() {
-            if entry.address != address {
-                updated.push_back(entry);
-            }
+    fn require_not_paused(env: &Env) {
+        if MultiSig::is_contract_paused(env) {
+            panic!("Contract is paused");
         }
-
-        env.storage()
-            .instance()
-            .set(&DataKey::DeployedContractRegistry, &updated);
-
-        env.events().publish(
-            (symbol_short!("registry"), symbol_short!("unreg")),
-            address,
-        );
-    }
-
-    /// Return paginated deployed contracts.
-    ///
-    /// # Arguments
-    /// * `offset` — Number of entries to skip (default: 0).
-    /// * `limit`  — Maximum entries to return (default: all).
-    pub fn list_deployed_contracts(
-        env: Env,
-        offset: Option<u32>,
-        limit: Option<u32>,
-    ) -> Vec<DeployedContract> {
-        let registry: Vec<DeployedContract> = env
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedContractRegistry)
-            .unwrap_or(Vec::new(&env));
-
-        let total = registry.len();
-        let offset = offset.unwrap_or(0);
-        let limit = limit.unwrap_or(total);
-
-        if offset > total {
-            panic!("Offset exceeds registry size");
-        }
-
-        let end = if offset + limit > total { total } else { offset + limit };
-        let mut result = Vec::new(&env);
-        for i in offset..end {
-            result.push_back(registry.get(i).unwrap().clone());
-        }
-        result
-    }
-
-    /// Look up a registered contract by its on-chain address.
-    ///
-    /// # Returns
-    /// * `Some(entry)` — if the address is in the registry.
-    /// * `None`        — if the address has not been registered.
-    pub fn get_deployed_contract(env: Env, address: Address) -> Option<DeployedContract> {
-        let registry: Vec<DeployedContract> = env
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedContractRegistry)
-            .unwrap_or(Vec::new(&env));
-
-        for entry in registry.iter() {
-            if entry.address == address {
-                return Some(entry);
-            }
-        }
-        None
-    }
-
-    /// Return the total number of registered deployed contracts.
-    pub fn deployed_contract_count(env: Env) -> u32 {
-        let registry: Vec<DeployedContract> = env
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedContractRegistry)
-            .unwrap_or(Vec::new(&env));
-        registry.len()
     }
 }
 
